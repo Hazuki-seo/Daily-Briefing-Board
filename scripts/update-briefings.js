@@ -141,8 +141,9 @@ function makePrompt(today, sourceConfig, topicWeights, comments, validationFeedb
     `検索方針:\n` +
     `- 直近7日以内を基本に、公式発表・一次情報・信頼できる報道を優先する。\n` +
     `- 公式発表、企業ニュースリリース、官公庁、展示会公式、信頼できる報道を優先する。\n` +
-    `- source_urlには、必ずWeb検索で確認できた実在URLを入れる。存在しないURLや推測URLを作らない。\n` +
+    `- source_urlには、必ずWeb検索結果として確認できたURLをそのまま入れる。URLのslugを推測して作らない。存在しないURLや推測URLを絶対に作らない。\n` +
     `- source_urlは、そのニュースの個別記事・個別プレスリリース・個別発表資料・個別報道ページにする。企業トップページ、サービス紹介ページ、ニュース一覧ページ、カテゴリページ、採用ページ、汎用トップページは禁止。個別ページが見つからない場合は別のニュースを選ぶ。\n` +
+    `- source_urlは、このあと自動で疎通確認される。404/410/存在しないページ/トップページへのリダイレクトになるURLは失敗扱いになるため、検索結果に出た実在する個別URLだけを使う。\n` +
     `- source_nameは、source_urlのページ名や媒体名が分かる名前にする。企業名だけではなく、可能なら「企業名 ニュースリリース」「媒体名 記事」などにする。\n` +
     `- source_image_urlは、記事や公式発表に紐づく画像URLが確認できる場合だけ入れる。分からない場合は空文字にする。\n` +
     `- 1つの媒体・企業に偏りすぎないようにする。\n\n` +
@@ -274,7 +275,67 @@ function isLikelyGenericSourceUrl(value) {
   }
 }
 
-function validateGenerated(generated) {
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      redirect: 'follow',
+      ...options,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; DailyBriefingBoard/1.0; +https://github.com/)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ...(options.headers || {})
+      },
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function checkSourceUrlLive(value) {
+  const url = String(value || '').trim();
+  if (!/^https?:\/\//.test(url)) {
+    return { ok: false, reason: 'source_url is not http(s)' };
+  }
+
+  const timeoutMs = Number(process.env.SOURCE_URL_TIMEOUT_MS || 15000);
+  let lastReason = '';
+
+  for (const method of ['HEAD', 'GET']) {
+    try {
+      const response = await fetchWithTimeout(url, { method }, timeoutMs);
+      const finalUrl = response.url || url;
+
+      // Some valid publishers block bots, HEAD requests, or rate-limit GitHub Actions.
+      // Treat those as "not proven dead" so we do not reject real links unnecessarily.
+      if ([401, 403, 405, 429].includes(response.status)) {
+        return { ok: true, status: response.status, finalUrl, note: 'not publicly verifiable from Actions, but not a dead-link status' };
+      }
+
+      if (response.status >= 200 && response.status < 400) {
+        if (isLikelyGenericSourceUrl(finalUrl)) {
+          return { ok: false, status: response.status, finalUrl, reason: `redirected to generic/top/list page: ${finalUrl}` };
+        }
+        return { ok: true, status: response.status, finalUrl };
+      }
+
+      lastReason = `HTTP ${response.status}`;
+
+      // HEAD is often unsupported; retry with GET before rejecting.
+      if (method === 'HEAD') continue;
+    } catch (error) {
+      lastReason = error && error.message ? error.message : String(error);
+      if (method === 'HEAD') continue;
+    }
+  }
+
+  return { ok: false, reason: lastReason || 'unreachable' };
+}
+
+async function validateGenerated(generated) {
   if (!generated || !Array.isArray(generated.items)) {
     throw new Error('Generated output does not contain items array.');
   }
@@ -300,6 +361,14 @@ function validateGenerated(generated) {
     if (isLikelyGenericSourceUrl(item.source_url)) {
       throw new Error(`Item ${index + 1}: source_url looks like a top/list page, not a specific article/release: ${item.source_url}`);
     }
+
+    const liveCheck = await checkSourceUrlLive(item.source_url);
+    if (!liveCheck.ok) {
+      throw new Error(`Item ${index + 1}: source_url is not reachable or redirects to an invalid page: ${item.source_url} (${liveCheck.reason || 'unknown reason'})`);
+    }
+    if (liveCheck.finalUrl && liveCheck.finalUrl !== item.source_url) {
+      console.log(`Item ${index + 1}: source_url redirects to ${liveCheck.finalUrl}`);
+    }
   }
 }
 
@@ -323,7 +392,7 @@ async function generateWithValidationRetry({ today, sourceConfig, topicWeights, 
     });
 
     try {
-      validateGenerated(generated);
+      await validateGenerated(generated);
       return generated;
     } catch (error) {
       lastError = error;
