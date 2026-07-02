@@ -142,11 +142,14 @@ function makePrompt(today, sourceConfig, topicWeights, comments) {
     `- 直近7日以内を基本に、公式発表・一次情報・信頼できる報道を優先する。\n` +
     `- 公式発表、企業ニュースリリース、官公庁、展示会公式、信頼できる報道を優先する。\n` +
     `- source_urlには、必ずWeb検索で確認できた実在URLを入れる。存在しないURLや推測URLを作らない。\n` +
+    `- source_urlは、そのニュースの個別記事・個別プレスリリース・個別発表資料・個別報道ページにする。企業トップページ、サービス紹介ページ、ニュース一覧ページ、カテゴリページ、採用ページ、汎用トップページは禁止。個別ページが見つからない場合は別のニュースを選ぶ。\n` +
+    `- source_nameは、source_urlのページ名や媒体名が分かる名前にする。企業名だけではなく、可能なら「企業名 ニュースリリース」「媒体名 記事」などにする。\n` +
     `- source_image_urlは、記事や公式発表に紐づく画像URLが確認できる場合だけ入れる。分からない場合は空文字にする。\n` +
     `- 1つの媒体・企業に偏りすぎないようにする。\n\n` +
     `必須ルール:\n` +
     `- itemsは必ず7本。section=workを5本、section=societyを2本にする。\n` +
     `- いつ・どこで・誰が・何をしたかが分かるように書く。記事に明記がない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
+    `- source_urlがトップページや一覧ページになりそうな場合、その項目は採用しない。必ず個別URLを確認できたニュースだけを採用する。\n` +
     `- 短文メモにしない。what_happened/background/watch_point/work_hint は、それぞれ前提を知らない人にも分かる2〜3文程度にする。\n` +
     `- summaryは1〜2文で要点を説明する。titleは日本語で、煽りすぎず具体的にする。\n` +
     `- importanceは1〜5の数字文字列にする。\n` +
@@ -227,6 +230,47 @@ async function callOpenAI({ today, sourceConfig, topicWeights, comments }) {
   }
 }
 
+
+function isLikelyGenericSourceUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const path = url.pathname.replace(/\/+$/, '');
+    const lowerPath = path.toLowerCase();
+
+    if (!path || path === '') return true;
+
+    const genericPaths = new Set([
+      '',
+      '/jp',
+      '/ja',
+      '/japan',
+      '/news',
+      '/press',
+      '/pressrelease',
+      '/press-releases',
+      '/newsroom',
+      '/topics',
+      '/information',
+      '/ir',
+      '/company',
+      '/about',
+      '/products',
+      '/services'
+    ]);
+
+    if (genericPaths.has(lowerPath)) return true;
+
+    const segments = lowerPath.split('/').filter(Boolean);
+    if (segments.length <= 1 && !/[0-9]{4}|article|release|detail|entry|post|news\//i.test(lowerPath)) {
+      return true;
+    }
+
+    return false;
+  } catch (_error) {
+    return true;
+  }
+}
+
 function validateGenerated(generated) {
   if (!generated || !Array.isArray(generated.items)) {
     throw new Error('Generated output does not contain items array.');
@@ -249,6 +293,9 @@ function validateGenerated(generated) {
     }
     if (!/^https?:\/\//.test(String(item.source_url || ''))) {
       throw new Error(`Item ${index + 1}: source_url must be http(s).`);
+    }
+    if (isLikelyGenericSourceUrl(item.source_url)) {
+      throw new Error(`Item ${index + 1}: source_url looks like a top/list page, not a specific article/release: ${item.source_url}`);
     }
   }
 }
