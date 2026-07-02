@@ -125,7 +125,7 @@ function makeSchema() {
   };
 }
 
-function makePrompt(today, sourceConfig, topicWeights, comments) {
+function makePrompt(today, sourceConfig, topicWeights, comments, validationFeedback = '') {
   const themes = (sourceConfig.queries || []).map(query => ({
     section: query.section,
     category: query.category,
@@ -157,10 +157,13 @@ function makePrompt(today, sourceConfig, topicWeights, comments) {
     `探索テーマ:\n${JSON.stringify(themes, null, 2)}\n\n` +
     `優先ドメイン候補:\n${JSON.stringify(sourceConfig.preferred_domains || [], null, 2)}\n\n` +
     `関心テーマ(topic_weights):\n${JSON.stringify(topicWeights.slice(0, 20), null, 2)}\n\n` +
-    `直近コメント:\n${JSON.stringify(comments, null, 2)}\n`;
+    `直近コメント:\n${JSON.stringify(comments, null, 2)}\n\n` +
+    (validationFeedback
+      ? `前回生成結果の修正指示:\n${validationFeedback}\nこの指摘に該当するURL・記事選定を必ず避け、別の個別記事/個別プレスリリース/個別発表ページを選び直してください。\n`
+      : '');
 }
 
-async function callOpenAI({ today, sourceConfig, topicWeights, comments }) {
+async function callOpenAI({ today, sourceConfig, topicWeights, comments, validationFeedback = '' }) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY is missing. Add it as a GitHub Actions repository secret.');
@@ -188,7 +191,7 @@ async function callOpenAI({ today, sourceConfig, topicWeights, comments }) {
         content: [
           {
             type: 'input_text',
-            text: makePrompt(today, sourceConfig, topicWeights, comments)
+            text: makePrompt(today, sourceConfig, topicWeights, comments, validationFeedback)
           }
         ]
       }
@@ -300,6 +303,37 @@ function validateGenerated(generated) {
   }
 }
 
+async function generateWithValidationRetry({ today, sourceConfig, topicWeights, comments }) {
+  const maxAttempts = Number(process.env.GENERATION_MAX_ATTEMPTS || 3);
+  let validationFeedback = '';
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) {
+      console.log(`Retrying generation because validation failed. Attempt ${attempt}/${maxAttempts}.`);
+      console.log(validationFeedback);
+    }
+
+    const generated = await callOpenAI({
+      today,
+      sourceConfig,
+      topicWeights,
+      comments,
+      validationFeedback
+    });
+
+    try {
+      validateGenerated(generated);
+      return generated;
+    } catch (error) {
+      lastError = error;
+      validationFeedback = String(error && error.message ? error.message : error);
+    }
+  }
+
+  throw lastError || new Error('Generation validation failed.');
+}
+
 function rowFromGeneratedItem(today, item, index) {
   const id = `${compactDate(today)}-${String(index + 1).padStart(2, '0')}`;
   const row = { date: today, id };
@@ -329,14 +363,13 @@ async function main() {
   }
 
   console.log('Collecting and generating with OpenAI web_search.');
-  const generated = await callOpenAI({
+  const generated = await generateWithValidationRetry({
     today,
     sourceConfig,
     topicWeights,
     comments: summarizeComments(comments)
   });
 
-  validateGenerated(generated);
   const newRows = generated.items.map((item, index) => rowFromGeneratedItem(today, item, index));
 
   const preservedRows = replaceToday
