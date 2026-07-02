@@ -31,6 +31,17 @@ const BRIEFING_HEADERS = [
   'importance'
 ];
 
+const CATEGORY_KEYWORDS = {
+  'AI・テック': ['AI', '人工知能', '生成AI', 'LLM', 'OpenAI', 'NVIDIA', 'GPU', 'ロボット', 'robot', 'robotics', 'フィジカルAI', 'physical AI', 'エージェント', 'agent', '半導体', 'データセンター', '機械学習'],
+  '印刷・製造業': ['製造', 'ものづくり', '工場', '生産', 'スマートファクトリー', '設備', '保全', '自動化', '省人', 'ロボット', '印刷', 'プリント', 'デジタル印刷', 'DTF', '小ロット', 'カスタマイズ', 'industrial', 'manufacturing', 'factory', 'printing'],
+  'デザイン・UX': ['UX', 'UI', 'デザイン', 'ユーザー体験', 'Figma', 'Adobe', 'プロダクト', 'アクセシビリティ', 'クリエイティブ', 'design', 'product design'],
+  'ゲーミフィケーション': ['ゲーミフィケーション', 'ゲーム', 'game', 'gamification', '教育', '研修', '学習', '行動変容', 'ポイント', 'ランキング', 'バッジ', 'エンゲージメント'],
+  '国内情勢': ['日本', '政府', '国会', '日銀', '物価', '賃上げ', '選挙', '政策', '経済', '補助金', 'Japan', 'BOJ'],
+  '国際情勢': ['米国', '中国', 'ロシア', 'ウクライナ', '中東', 'イスラエル', 'NATO', 'EU', '関税', '貿易', '安全保障', 'Ukraine', 'China', 'tariff', 'Middle East']
+};
+
+const SECTION_ORDER = { work: 0, society: 1 };
+
 function todayJST() {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
@@ -45,8 +56,8 @@ function compactDate(value) {
   return String(value || '').replaceAll('-', '');
 }
 
-function readJSON(filePath) {
-  if (!fs.existsSync(filePath)) return {};
+function readJSON(filePath, fallback = {}) {
+  if (!fs.existsSync(filePath)) return fallback;
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
@@ -57,6 +68,365 @@ function readCSV(filePath) {
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function stripTags(html) {
+  return decodeEntities(String(html || '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<[^>]+>/g, ' '));
+}
+
+function decodeEntities(text) {
+  const named = {
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    nbsp: ' '
+  };
+  return String(text || '')
+    .replace(/&#(\d+);/g, (_m, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&([a-zA-Z]+);/g, (m, name) => named[name] || m);
+}
+
+function valueFromTag(xml, tagNames) {
+  const names = Array.isArray(tagNames) ? tagNames : [tagNames];
+  for (const tag of names) {
+    const escaped = tag.replace(':', '\\:');
+    const re = new RegExp(`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${escaped}>`, 'i');
+    const match = xml.match(re);
+    if (match) return normalizeWhitespace(stripTags(match[1]));
+  }
+  return '';
+}
+
+function rawValueFromTag(xml, tagNames) {
+  const names = Array.isArray(tagNames) ? tagNames : [tagNames];
+  for (const tag of names) {
+    const escaped = tag.replace(':', '\\:');
+    const re = new RegExp(`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${escaped}>`, 'i');
+    const match = xml.match(re);
+    if (match) return decodeEntities(match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim());
+  }
+  return '';
+}
+
+function attrFromTag(xml, tagName, attrName) {
+  const escaped = tagName.replace(':', '\\:');
+  const re = new RegExp(`<${escaped}\\b([^>]*)>`, 'i');
+  const match = xml.match(re);
+  if (!match) return '';
+  const attrs = match[1];
+  const attrRe = new RegExp(`${attrName}=["']([^"']+)["']`, 'i');
+  const attrMatch = attrs.match(attrRe);
+  return attrMatch ? decodeEntities(attrMatch[1]) : '';
+}
+
+function attrFromAnyTag(xml, tagNames, attrName) {
+  for (const tagName of tagNames) {
+    const value = attrFromTag(xml, tagName, attrName);
+    if (value) return value;
+  }
+  return '';
+}
+
+function blocksForFeed(xml) {
+  const blocks = [];
+  const itemRe = /<item\b[\s\S]*?<\/item>/gi;
+  const entryRe = /<entry\b[\s\S]*?<\/entry>/gi;
+  let match;
+  while ((match = itemRe.exec(xml)) !== null) blocks.push({ type: 'rss', xml: match[0] });
+  while ((match = entryRe.exec(xml)) !== null) blocks.push({ type: 'atom', xml: match[0] });
+  return blocks;
+}
+
+function absolutizeUrl(url, baseUrl) {
+  if (!url) return '';
+  try {
+    return new URL(url, baseUrl).toString();
+  } catch (_error) {
+    return '';
+  }
+}
+
+function cleanUrl(url) {
+  try {
+    const parsed = new URL(url);
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid'].forEach(key => parsed.searchParams.delete(key));
+    parsed.hash = '';
+    return parsed.toString();
+  } catch (_error) {
+    return '';
+  }
+}
+
+function parseFeed(xml, source) {
+  const blocks = blocksForFeed(xml);
+  const items = [];
+
+  for (const block of blocks) {
+    const itemXml = block.xml;
+    let link = '';
+
+    if (block.type === 'atom') {
+      link = attrFromTag(itemXml, 'link', 'href') || valueFromTag(itemXml, 'link');
+    } else {
+      link = valueFromTag(itemXml, 'link') || attrFromTag(itemXml, 'link', 'rdf:resource') || attrFromTag(itemXml, 'guid', 'isPermaLink');
+    }
+
+    link = cleanUrl(absolutizeUrl(link, source.feed_url));
+    if (!link) continue;
+
+    const title = valueFromTag(itemXml, 'title');
+    const descriptionRaw = rawValueFromTag(itemXml, ['description', 'content:encoded', 'summary', 'content']);
+    const description = normalizeWhitespace(stripTags(descriptionRaw)).slice(0, 1200);
+    const publishedRaw = valueFromTag(itemXml, ['pubDate', 'published', 'updated', 'dc:date']);
+    const publishedAt = parseDateSafe(publishedRaw);
+    const imageUrl = attrFromAnyTag(itemXml, ['media:content', 'media:thumbnail', 'enclosure'], 'url');
+
+    if (!title) continue;
+
+    items.push({
+      source_name: source.name,
+      source_url: link,
+      feed_url: source.feed_url,
+      source_section: source.section || '',
+      source_category: source.category || '',
+      title,
+      description,
+      published_at: publishedAt ? publishedAt.toISOString() : '',
+      published_date: publishedAt ? dateJST(publishedAt) : '',
+      source_image_url: cleanUrl(absolutizeUrl(imageUrl, source.feed_url)) || '',
+      raw_source: source
+    });
+  }
+
+  return items;
+}
+
+function parseDateSafe(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function dateJST(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
+function isWithinLookback(item, lookbackDays) {
+  if (!item.published_at) return true;
+  const published = new Date(item.published_at);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - lookbackDays);
+  return published >= cutoff;
+}
+
+function textForMatch(item) {
+  return `${item.title} ${item.description}`.toLowerCase();
+}
+
+function hasKeywordMatch(item, source) {
+  const keywords = source.keywords || [];
+  if (!keywords.length) return true;
+  const text = textForMatch(item);
+  return keywords.some(keyword => text.includes(String(keyword).toLowerCase()));
+}
+
+function detectCategory(item) {
+  const text = textForMatch(item);
+  const scores = Object.fromEntries(Object.keys(CATEGORY_KEYWORDS).map(category => [category, 0]));
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    for (const keyword of keywords) {
+      if (text.includes(String(keyword).toLowerCase())) scores[category] += 1;
+    }
+  }
+
+  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  return sorted[0][1] > 0 ? sorted[0][0] : (item.source_category || 'AI・テック');
+}
+
+function detectSection(item) {
+  if (item.source_section) return item.source_section;
+  const category = detectCategory(item);
+  return ['国内情勢', '国際情勢'].includes(category) ? 'society' : 'work';
+}
+
+function domainOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch (_error) {
+    return '';
+  }
+}
+
+function isLikelyGenericUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const pathName = parsed.pathname.replace(/\/+/g, '/').replace(/\/$/, '').toLowerCase();
+    if (!pathName || pathName === '') return true;
+    const genericPaths = new Set([
+      '/news', '/press', '/pressroom', '/releases', '/release', '/topics', '/blog', '/blogs', '/rss', '/feed', '/category', '/categories', '/search', '/articles', '/article', '/events'
+    ]);
+    if (genericPaths.has(pathName)) return true;
+    return false;
+  } catch (_error) {
+    return true;
+  }
+}
+
+function isDisallowedDomain(url, disallowedPatterns = []) {
+  const hostname = domainOf(url);
+  return disallowedPatterns.some(patternText => {
+    try {
+      return new RegExp(patternText, 'i').test(hostname);
+    } catch (_error) {
+      return hostname.includes(patternText);
+    }
+  });
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      redirect: 'follow',
+      ...options,
+      headers: {
+        'User-Agent': 'daily-briefing-board/9.0 (+https://github.com/Hazuki-seo/Daily-Briefing-Board)',
+        'Accept': options.accept || 'text/html,application/xhtml+xml,application/xml,text/xml,application/rss+xml,application/atom+xml,*/*;q=0.8',
+        ...(options.headers || {})
+      },
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchText(url, timeoutMs = 20000) {
+  const res = await fetchWithTimeout(url, {}, timeoutMs);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return await res.text();
+}
+
+async function checkUrl(url) {
+  try {
+    const res = await fetchWithTimeout(url, { method: 'GET' }, 15000);
+    if (res.status >= 400) return { ok: false, status: res.status, finalUrl: res.url || url };
+    return { ok: true, status: res.status, finalUrl: cleanUrl(res.url || url) };
+  } catch (error) {
+    return { ok: false, status: 0, finalUrl: url, error: error.message };
+  }
+}
+
+function extractMeta(html, propertyOrName) {
+  const escaped = propertyOrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+name=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${escaped}["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${escaped}["'][^>]*>`, 'i')
+  ];
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match) return normalizeWhitespace(decodeEntities(match[1]));
+  }
+  return '';
+}
+
+function extractTitle(html) {
+  const ogTitle = extractMeta(html, 'og:title');
+  if (ogTitle) return ogTitle;
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? normalizeWhitespace(stripTags(match[1])) : '';
+}
+
+function extractArticleText(html) {
+  const body = String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ');
+
+  const paragraphs = [];
+  const pRe = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  let match;
+  while ((match = pRe.exec(body)) !== null) {
+    const text = normalizeWhitespace(stripTags(match[1]));
+    if (text.length >= 35) paragraphs.push(text);
+    if (paragraphs.join(' ').length > 1800) break;
+  }
+
+  if (paragraphs.length) return paragraphs.join(' ').slice(0, 1800);
+
+  return normalizeWhitespace(stripTags(body)).slice(0, 1800);
+}
+
+async function enrichCandidate(item) {
+  const enriched = { ...item };
+  try {
+    const res = await fetchWithTimeout(item.source_url, { method: 'GET' }, 16000);
+    if (!res.ok) return enriched;
+    const finalUrl = cleanUrl(res.url || item.source_url);
+    const contentType = res.headers.get('content-type') || '';
+    enriched.source_url = finalUrl || item.source_url;
+    if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) return enriched;
+
+    const html = await res.text();
+    const metaDescription = extractMeta(html, 'description') || extractMeta(html, 'og:description');
+    const ogImage = extractMeta(html, 'og:image');
+    const pageTitle = extractTitle(html);
+    const articleText = extractArticleText(html);
+
+    enriched.page_title = pageTitle || item.title;
+    enriched.description = normalizeWhitespace([item.description, metaDescription].filter(Boolean).join(' ')).slice(0, 1400);
+    enriched.article_excerpt = articleText;
+    if (!enriched.source_image_url && ogImage) {
+      enriched.source_image_url = cleanUrl(absolutizeUrl(ogImage, enriched.source_url));
+    }
+  } catch (error) {
+    enriched.enrich_error = error.message;
+  }
+  return enriched;
+}
+
+function scoreCandidate(item, topicWeights = []) {
+  const text = textForMatch(item);
+  let score = 0;
+  const section = detectSection(item);
+  const category = detectCategory(item);
+  if (section === 'work') score += 6;
+  if (section === 'society') score += 4;
+  if (item.published_at) {
+    const ageMs = Date.now() - new Date(item.published_at).getTime();
+    const ageDays = Math.max(0, ageMs / 86400000);
+    score += Math.max(0, 12 - ageDays);
+  }
+  for (const keyword of CATEGORY_KEYWORDS[category] || []) {
+    if (text.includes(String(keyword).toLowerCase())) score += 1;
+  }
+  for (const weight of topicWeights) {
+    const keyword = String(weight.keyword || '').toLowerCase();
+    const value = Number(weight.weight || 0);
+    if (keyword && text.includes(keyword)) score += Math.min(5, value || 1);
+  }
+  const rawSource = item.raw_source || {};
+  if (rawSource.priority) score += Number(rawSource.priority) || 0;
+  return score;
 }
 
 function summarizeComments(comments) {
@@ -70,9 +440,88 @@ function summarizeComments(comments) {
     }));
 }
 
+async function collectCandidates(sourceConfig, topicWeights) {
+  const lookbackDays = Number(sourceConfig.lookback_days || 14);
+  const maxPerSource = Number(sourceConfig.max_items_per_source || 12);
+  const maxCandidates = Number(sourceConfig.max_candidates_for_ai || 70);
+  const disallowedPatterns = sourceConfig.disallowed_domain_patterns || [];
+
+  const all = [];
+  const sources = sourceConfig.rss_sources || [];
+
+  for (const source of sources) {
+    try {
+      console.log(`Collecting RSS: ${source.name} <${source.feed_url}>`);
+      const xml = await fetchText(source.feed_url, Number(source.timeout_ms || 20000));
+      const parsedItems = parseFeed(xml, source)
+        .filter(item => !isDisallowedDomain(item.source_url, disallowedPatterns))
+        .filter(item => !isLikelyGenericUrl(item.source_url))
+        .filter(item => isWithinLookback(item, Number(source.lookback_days || lookbackDays)))
+        .filter(item => hasKeywordMatch(item, source))
+        .slice(0, maxPerSource);
+
+      console.log(`  candidates: ${parsedItems.length}`);
+      all.push(...parsedItems);
+    } catch (error) {
+      console.warn(`  skipped: ${source.name}: ${error.message}`);
+    }
+  }
+
+  const dedupedMap = new Map();
+  for (const item of all) {
+    const key = item.source_url || `${item.source_name}:${item.title}`;
+    if (!dedupedMap.has(key)) dedupedMap.set(key, item);
+  }
+
+  let deduped = [...dedupedMap.values()];
+  deduped = deduped
+    .map(item => ({ ...item, detected_section: detectSection(item), detected_category: detectCategory(item), score: scoreCandidate(item, topicWeights) }))
+    .sort((a, b) => {
+      const sectionDiff = (SECTION_ORDER[a.detected_section] ?? 9) - (SECTION_ORDER[b.detected_section] ?? 9);
+      if (sectionDiff !== 0) return sectionDiff;
+      return b.score - a.score;
+    });
+
+  const work = deduped.filter(item => item.detected_section === 'work').slice(0, Math.ceil(maxCandidates * 0.72));
+  const society = deduped.filter(item => item.detected_section === 'society').slice(0, Math.ceil(maxCandidates * 0.38));
+  const mixed = [...work, ...society]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxCandidates);
+
+  console.log(`Total usable candidates before URL check: ${mixed.length} (work=${work.length}, society=${society.length})`);
+
+  const checked = [];
+  for (const item of mixed) {
+    const result = await checkUrl(item.source_url);
+    if (!result.ok) {
+      console.warn(`  dead URL skipped: ${item.source_url} (${result.status || result.error})`);
+      continue;
+    }
+    const normalizedItem = { ...item, source_url: cleanUrl(result.finalUrl || item.source_url) };
+    if (isLikelyGenericUrl(normalizedItem.source_url)) {
+      console.warn(`  generic URL skipped: ${normalizedItem.source_url}`);
+      continue;
+    }
+    checked.push(normalizedItem);
+  }
+
+  console.log(`Usable candidates after URL check: ${checked.length}`);
+
+  const enriched = [];
+  const enrichLimit = Number(sourceConfig.enrich_limit || 42);
+  for (const item of checked.slice(0, enrichLimit)) {
+    enriched.push(await enrichCandidate(item));
+  }
+  enriched.push(...checked.slice(enrichLimit));
+
+  return enriched.slice(0, maxCandidates).map((item, index) => ({
+    ...item,
+    candidate_id: `c${String(index + 1).padStart(3, '0')}`
+  }));
+}
+
 function outputTextFromResponse(data) {
   if (typeof data.output_text === 'string') return data.output_text;
-
   const chunks = [];
   for (const output of data.output || []) {
     for (const content of output.content || []) {
@@ -80,23 +529,19 @@ function outputTextFromResponse(data) {
       if (content.type === 'text' && typeof content.text === 'string') chunks.push(content.text);
     }
   }
-
   return chunks.join('\n').trim();
 }
 
 function makeSchema() {
   const itemProperties = {
+    candidate_id: { type: 'string' },
     section: { type: 'string', enum: ['work', 'society'] },
     category: { type: 'string' },
-    source_name: { type: 'string' },
-    published_date: { type: 'string' },
     event_date: { type: 'string' },
     location: { type: 'string' },
     actor: { type: 'string' },
     title: { type: 'string' },
     summary: { type: 'string' },
-    source_url: { type: 'string' },
-    source_image_url: { type: 'string' },
     image_caption: { type: 'string' },
     what_happened: { type: 'string' },
     background: { type: 'string' },
@@ -125,67 +570,52 @@ function makeSchema() {
   };
 }
 
-function makePrompt(today, sourceConfig, topicWeights, comments, validationFeedback = '') {
-  const themes = (sourceConfig.queries || []).map(query => ({
-    section: query.section,
-    category: query.category,
-    label: query.label,
-    search_hint: query.query
+function makePrompt({ today, candidates, topicWeights, comments }) {
+  const candidatePayload = candidates.map(candidate => ({
+    candidate_id: candidate.candidate_id,
+    detected_section: candidate.detected_section,
+    detected_category: candidate.detected_category,
+    source_name: candidate.source_name,
+    published_date: candidate.published_date,
+    title: candidate.title,
+    page_title: candidate.page_title || '',
+    description: normalizeWhitespace(candidate.description || '').slice(0, 700),
+    article_excerpt: normalizeWhitespace(candidate.article_excerpt || '').slice(0, 900),
+    domain: domainOf(candidate.source_url)
   }));
 
-  return `あなたは日本語のニュース編集者です。Web検索を使って、ニュースボード用のデイリーブリーフィングを作成してください。\n\n` +
+  return `あなたは日本語のニュース編集者です。下記の候補記事だけを使い、ニュースボード用のデイリーブリーフィングを作成してください。\n\n` +
     `日付: ${today}（日本時間）\n\n` +
-    `構成:\n` +
-    `- 業務インサイト5本: 印刷・製造業、デザイン・UX、AI・テック、ゲーミフィケーションを中心に、企画・提案・調査・資料作成に使えるニュースを選ぶ。\n` +
-    `- 時事チェック2本: 国内情勢・国際情勢から、社会の前提知識として押さえるべきニュースを選ぶ。\n\n` +
-    `検索方針:\n` +
-    `- 直近7日以内を基本に、公式発表・一次情報・信頼できる報道を優先する。\n` +
-    `- 公式発表、企業ニュースリリース、官公庁、展示会公式、信頼できる報道を優先する。\n` +
-    `- source_urlには、必ずWeb検索結果として確認できたURLをそのまま入れる。URLのslugを推測して作らない。存在しないURLや推測URLを絶対に作らない。\n` +
-    `- source_urlは、そのニュースの個別記事・個別プレスリリース・個別発表資料・個別報道ページにする。企業トップページ、サービス紹介ページ、ニュース一覧ページ、カテゴリページ、採用ページ、汎用トップページは禁止。個別ページが見つからない場合は別のニュースを選ぶ。\n` +
-    `- URLはブラウザで直接開ける形にする。検索結果の見出しに対応する実在URLだけを採用し、架空の専門メディア名や架空slugを作らない。\n` +
-    `- 特に manufactur*dx*journal/news など、確認できないニュース風ドメインを推測で使わない。迷ったら官公庁・企業公式リリース・PR TIMES・Reuters/AP/BBC/NHK/Nikkei等の実在する個別ページを使う。\n` +
-    `- source_urlは、このあと自動で疎通確認される。404/410/存在しないページ/トップページへのリダイレクトになるURLは失敗扱いになるため、検索結果に出た実在する個別URLだけを使う。\n` +
-    `- source_nameは、source_urlのページ名や媒体名が分かる名前にする。企業名だけではなく、可能なら「企業名 ニュースリリース」「媒体名 記事」などにする。\n` +
-    `- source_image_urlは、記事や公式発表に紐づく画像URLが確認できる場合だけ入れる。分からない場合は空文字にする。\n` +
-    `- 1つの媒体・企業に偏りすぎないようにする。\n\n` +
-    `必須ルール:\n` +
-    `- itemsは必ず7本。section=workを5本、section=societyを2本にする。\n` +
-    `- いつ・どこで・誰が・何をしたかが分かるように書く。記事に明記がない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
-    `- source_urlがトップページや一覧ページになりそうな場合、その項目は採用しない。必ず個別URLを確認できたニュースだけを採用する。\n` +
-    `- 短文メモにしない。what_happened/background/watch_point/work_hint は、それぞれ前提を知らない人にも分かる2〜3文程度にする。\n` +
-    `- summaryは1〜2文で要点を説明する。titleは日本語で、煽りすぎず具体的にする。\n` +
-    `- importanceは1〜5の数字文字列にする。\n` +
-    `- 直近コメントやtopic_weightsに関連するテーマは優先してよいが、低品質な記事は選ばない。\n\n` +
-    `探索テーマ:\n${JSON.stringify(themes, null, 2)}\n\n` +
-    `優先ドメイン候補:\n${JSON.stringify(sourceConfig.preferred_domains || [], null, 2)}\n\n` +
+    `最重要ルール:\n` +
+    `- source_urlは出力しない。URLはシステム側でcandidate_idから元記事URLをコピーする。\n` +
+    `- 候補一覧にない記事、候補一覧にないURL、推測した事実は使わない。\n` +
+    `- candidate_idは候補一覧に存在するものだけを使う。7本すべて別のcandidate_idにする。\n` +
+    `- 業務インサイトはsection=workで5本、時事チェックはsection=societyで2本。\n` +
+    `- 業務インサイトは、印刷・製造業、デザイン・UX、AI・テック、ゲーミフィケーション、企画・提案・調査・資料作成に使える内容を優先する。\n` +
+    `- 時事チェックは、国内情勢・国際情勢から社会の前提知識として押さえるべき内容を選ぶ。\n` +
+    `- いつ・どこで・誰が・何をしたかが分かるように書く。候補にない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
+    `- what_happened/background/watch_point/work_hint は、それぞれ前提を知らない人にも分かる2〜3文程度にする。\n` +
+    `- titleは日本語で具体的に。summaryは1〜2文。importanceは1〜5の数字文字列。\n` +
+    `- categoryは「AI・テック」「印刷・製造業」「デザイン・UX」「ゲーミフィケーション」「国内情勢」「国際情勢」のいずれかを基本にする。\n\n` +
     `関心テーマ(topic_weights):\n${JSON.stringify(topicWeights.slice(0, 20), null, 2)}\n\n` +
     `直近コメント:\n${JSON.stringify(comments, null, 2)}\n\n` +
-    (validationFeedback
-      ? `前回生成結果の修正指示:\n${validationFeedback}\nこの指摘に該当するURL・記事選定を必ず避け、別の個別記事/個別プレスリリース/個別発表ページを選び直してください。\n`
-      : '');
+    `候補記事一覧:\n${JSON.stringify(candidatePayload, null, 2)}\n`;
 }
 
-async function callOpenAI({ today, sourceConfig, topicWeights, comments, validationFeedback = '' }) {
+async function callOpenAI({ today, candidates, topicWeights, comments }) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is missing. Add it as a GitHub Actions repository secret.');
-  }
+  if (!apiKey) throw new Error('OPENAI_API_KEY is missing. Add it as a GitHub Actions repository secret.');
 
-  const model = process.env.OPENAI_MODEL || 'gpt-5.5';
+  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
   const body = {
     model,
-    tools: [
-      { type: 'web_search' }
-    ],
-    tool_choice: 'required',
     input: [
       {
         role: 'system',
         content: [
           {
             type: 'input_text',
-            text: 'あなたは日本語のニュース編集者です。必ず指定されたJSONスキーマに従ってください。Web検索で確認できた事実だけを使い、根拠のない事実・URL・画像URLを作らないでください。'
+            text: 'あなたは日本語のニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にして、URLや事実を作らないでください。'
           }
         ]
       },
@@ -194,7 +624,7 @@ async function callOpenAI({ today, sourceConfig, topicWeights, comments, validat
         content: [
           {
             type: 'input_text',
-            text: makePrompt(today, sourceConfig, topicWeights, comments, validationFeedback)
+            text: makePrompt({ today, candidates, topicWeights, comments })
           }
         ]
       }
@@ -202,12 +632,12 @@ async function callOpenAI({ today, sourceConfig, topicWeights, comments, validat
     text: {
       format: {
         type: 'json_schema',
-        name: 'daily_briefing_items',
+        name: 'daily_briefing_selection',
         strict: true,
         schema: makeSchema()
       }
     },
-    max_output_tokens: 12000
+    max_output_tokens: 11000
   };
 
   const res = await fetch('https://api.openai.com/v1/responses', {
@@ -236,277 +666,106 @@ async function callOpenAI({ today, sourceConfig, topicWeights, comments, validat
   }
 }
 
+function validateSelection(selection, candidates) {
+  if (!selection || !Array.isArray(selection.items)) throw new Error('OpenAI output does not contain items array.');
+  if (selection.items.length !== 7) throw new Error(`Expected 7 items, got ${selection.items.length}.`);
 
-const BANNED_SOURCE_DOMAIN_PATTERNS = [
-  /(^|\.)manufacturing-dx-journal\.com$/i,
-  /(^|\.)manufacturing-dx-news\.com$/i
-];
+  const candidateMap = new Map(candidates.map(candidate => [candidate.candidate_id, candidate]));
+  const used = new Set();
+  const errors = [];
+  let workCount = 0;
+  let societyCount = 0;
 
-function isBannedSourceDomain(value) {
-  try {
-    const hostname = new URL(String(value || '')).hostname;
-    return BANNED_SOURCE_DOMAIN_PATTERNS.some(pattern => pattern.test(hostname));
-  } catch (_error) {
-    return true;
+  for (const [index, item] of selection.items.entries()) {
+    if (!candidateMap.has(item.candidate_id)) errors.push(`Item ${index + 1}: unknown candidate_id ${item.candidate_id}`);
+    if (used.has(item.candidate_id)) errors.push(`Item ${index + 1}: duplicate candidate_id ${item.candidate_id}`);
+    used.add(item.candidate_id);
+    if (item.section === 'work') workCount += 1;
+    if (item.section === 'society') societyCount += 1;
+    if (!['work', 'society'].includes(item.section)) errors.push(`Item ${index + 1}: invalid section ${item.section}`);
+    if (!String(item.title || '').trim()) errors.push(`Item ${index + 1}: missing title`);
+    if (!String(item.what_happened || '').trim()) errors.push(`Item ${index + 1}: missing what_happened`);
   }
+
+  if (workCount !== 5) errors.push(`Expected 5 work items, got ${workCount}.`);
+  if (societyCount !== 2) errors.push(`Expected 2 society items, got ${societyCount}.`);
+
+  if (errors.length) throw new Error(errors.join('\n'));
 }
 
-function isLikelyGenericSourceUrl(value) {
-  try {
-    const url = new URL(String(value || ''));
-    const path = url.pathname.replace(/\/+$/, '');
-    const lowerPath = path.toLowerCase();
-
-    if (!path || path === '') return true;
-
-    const genericPaths = new Set([
-      '',
-      '/jp',
-      '/ja',
-      '/japan',
-      '/news',
-      '/press',
-      '/pressrelease',
-      '/press-releases',
-      '/newsroom',
-      '/topics',
-      '/information',
-      '/ir',
-      '/company',
-      '/about',
-      '/products',
-      '/services',
-      '/case',
-      '/cases',
-      '/case-studies',
-      '/examples',
-      '/solutions',
-      '/blog',
-      '/column'
-    ]);
-
-    if (genericPaths.has(lowerPath)) return true;
-
-    const segments = lowerPath.split('/').filter(Boolean);
-    const lastSegment = segments[segments.length - 1] || '';
-    const genericLastSegments = new Set([
-      'news',
-      'press',
-      'pressrelease',
-      'press-releases',
-      'newsroom',
-      'topics',
-      'information',
-      'products',
-      'services',
-      'solutions',
-      'case',
-      'cases',
-      'case-studies',
-      'examples',
-      'blog',
-      'column',
-      'category',
-      'tag'
-    ]);
-
-    if (genericLastSegments.has(lastSegment)) return true;
-
-    // Do NOT reject a single slug only because it lacks a date.
-    // Many legitimate article URLs are one slug, e.g. /some-article-title.
-    return false;
-  } catch (_error) {
-    return true;
-  }
+function selectedRows({ selection, candidates, today }) {
+  const candidateMap = new Map(candidates.map(candidate => [candidate.candidate_id, candidate]));
+  return selection.items.map((item, index) => {
+    const candidate = candidateMap.get(item.candidate_id);
+    return {
+      date: today,
+      id: `${compactDate(today)}-${String(index + 1).padStart(2, '0')}`,
+      section: item.section,
+      category: normalizeWhitespace(item.category || candidate.detected_category),
+      source_name: normalizeWhitespace(candidate.source_name),
+      published_date: candidate.published_date || today,
+      event_date: normalizeWhitespace(item.event_date || candidate.published_date || today),
+      location: normalizeWhitespace(item.location || ''),
+      actor: normalizeWhitespace(item.actor || ''),
+      title: normalizeWhitespace(item.title),
+      summary: normalizeWhitespace(item.summary),
+      source_url: candidate.source_url,
+      source_image_url: candidate.source_image_url || '',
+      image_caption: normalizeWhitespace(item.image_caption || ''),
+      what_happened: normalizeWhitespace(item.what_happened),
+      background: normalizeWhitespace(item.background),
+      watch_point: normalizeWhitespace(item.watch_point),
+      work_hint: normalizeWhitespace(item.work_hint),
+      importance: String(item.importance || '3').replace(/[^1-5]/g, '') || '3'
+    };
+  });
 }
 
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      redirect: 'follow',
-      ...options,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; DailyBriefingBoard/1.0; +https://github.com/)',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        ...(options.headers || {})
-      },
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function checkSourceUrlLive(value) {
-  const url = String(value || '').trim();
-  if (!/^https?:\/\//.test(url)) {
-    return { ok: false, reason: 'source_url is not http(s)' };
-  }
-
-  const timeoutMs = Number(process.env.SOURCE_URL_TIMEOUT_MS || 15000);
-  let lastReason = '';
-
-  for (const method of ['HEAD', 'GET']) {
-    try {
-      const response = await fetchWithTimeout(url, { method }, timeoutMs);
-      const finalUrl = response.url || url;
-
-      // Some valid publishers block bots, HEAD requests, or rate-limit GitHub Actions.
-      // Treat those as "not proven dead" so we do not reject real links unnecessarily.
-      if ([401, 403, 405, 429].includes(response.status)) {
-        return { ok: true, status: response.status, finalUrl, note: 'not publicly verifiable from Actions, but not a dead-link status' };
-      }
-
-      if (response.status >= 200 && response.status < 400) {
-        if (isLikelyGenericSourceUrl(finalUrl)) {
-          return { ok: false, status: response.status, finalUrl, reason: `redirected to generic/top/list page: ${finalUrl}` };
-        }
-        return { ok: true, status: response.status, finalUrl };
-      }
-
-      lastReason = `HTTP ${response.status}`;
-
-      // HEAD is often unsupported; retry with GET before rejecting.
-      if (method === 'HEAD') continue;
-    } catch (error) {
-      lastReason = error && error.message ? error.message : String(error);
-      if (method === 'HEAD') continue;
-    }
-  }
-
-  return { ok: false, reason: lastReason || 'unreachable' };
-}
-
-async function validateGenerated(generated) {
-  if (!generated || !Array.isArray(generated.items)) {
-    throw new Error('Generated output does not contain items array.');
-  }
-  if (generated.items.length !== 7) {
-    throw new Error(`Expected 7 items, got ${generated.items.length}.`);
-  }
-
-  const workCount = generated.items.filter(item => item.section === 'work').length;
-  const societyCount = generated.items.filter(item => item.section === 'society').length;
-  if (workCount !== 5 || societyCount !== 2) {
-    throw new Error(`Expected 5 work and 2 society items, got ${workCount} work and ${societyCount} society.`);
-  }
-
-  for (const [index, item] of generated.items.entries()) {
-    for (const header of BRIEFING_HEADERS.filter(header => !['date', 'id'].includes(header))) {
-      if (item[header] === undefined || item[header] === null) {
-        throw new Error(`Item ${index + 1}: missing ${header}.`);
-      }
-    }
-    if (!/^https?:\/\//.test(String(item.source_url || ''))) {
-      throw new Error(`Item ${index + 1}: source_url must be http(s).`);
-    }
-    if (isBannedSourceDomain(item.source_url)) {
-      throw new Error(`Item ${index + 1}: source_url domain is disallowed because it is often generated as an unverifiable/fake source: ${item.source_url}`);
-    }
-
-    const liveCheck = await checkSourceUrlLive(item.source_url);
-    if (!liveCheck.ok) {
-      throw new Error(`Item ${index + 1}: source_url is not reachable or redirects to an invalid page: ${item.source_url} (${liveCheck.reason || 'unknown reason'})`);
-    }
-    if (liveCheck.finalUrl && liveCheck.finalUrl !== item.source_url) {
-      console.log(`Item ${index + 1}: source_url redirects to ${liveCheck.finalUrl}`);
-    }
-    if (isLikelyGenericSourceUrl(liveCheck.finalUrl || item.source_url)) {
-      throw new Error(`Item ${index + 1}: source_url is a top/list/generic page, not a specific article/release: ${liveCheck.finalUrl || item.source_url}`);
-    }
-  }
-}
-
-async function generateWithValidationRetry({ today, sourceConfig, topicWeights, comments }) {
-  const maxAttempts = Number(process.env.GENERATION_MAX_ATTEMPTS || 4);
-  let validationFeedback = '';
-  let lastError = null;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    if (attempt > 1) {
-      console.log(`Retrying generation because validation failed. Attempt ${attempt}/${maxAttempts}.`);
-      console.log(validationFeedback);
-    }
-
-    const generated = await callOpenAI({
-      today,
-      sourceConfig,
-      topicWeights,
-      comments,
-      validationFeedback
-    });
-
-    try {
-      await validateGenerated(generated);
-      return generated;
-    } catch (error) {
-      lastError = error;
-      validationFeedback = String(error && error.message ? error.message : error);
-    }
-  }
-
-  throw lastError || new Error('Generation validation failed.');
-}
-
-function rowFromGeneratedItem(today, item, index) {
-  const id = `${compactDate(today)}-${String(index + 1).padStart(2, '0')}`;
-  const row = { date: today, id };
-
-  for (const header of BRIEFING_HEADERS) {
-    if (header === 'date' || header === 'id') continue;
-    row[header] = normalizeWhitespace(item[header]);
-  }
-
-  row.importance = String(row.importance || '4').replace(/[^0-9]/g, '') || '4';
-  return row;
+function writeBriefings({ newRows, today, replaceToday }) {
+  const existingRows = readCSV(BRIEFINGS_PATH);
+  const keptRows = replaceToday ? existingRows.filter(row => row.date !== today) : existingRows;
+  const rows = [...keptRows, ...newRows];
+  fs.writeFileSync(BRIEFINGS_PATH, toCSV(rows, BRIEFING_HEADERS), 'utf8');
 }
 
 async function main() {
   const today = todayJST();
-  const replaceToday = String(process.env.REPLACE_TODAY || 'true').toLowerCase() !== 'false';
-  const dryRun = String(process.env.DRY_RUN || 'false').toLowerCase() === 'true';
-
-  const sourceConfig = readJSON(SOURCES_PATH);
-  const existingBriefings = readCSV(BRIEFINGS_PATH);
-  const comments = readCSV(COMMENTS_PATH);
+  const sourceConfig = readJSON(SOURCES_PATH, {});
   const topicWeights = readCSV(TOPIC_WEIGHTS_PATH);
+  const comments = summarizeComments(readCSV(COMMENTS_PATH));
+  const replaceToday = String(process.env.REPLACE_TODAY || 'true') === 'true';
+  const dryRun = String(process.env.DRY_RUN || 'false') === 'true';
 
-  if (!replaceToday && existingBriefings.some(row => row.date === today)) {
-    console.log(`Briefings for ${today} already exist. Set REPLACE_TODAY=true to replace.`);
-    return;
+  console.log('Collecting existing source URLs from RSS/Atom feeds first.');
+  const candidates = await collectCandidates(sourceConfig, topicWeights);
+
+  const workCandidates = candidates.filter(candidate => candidate.detected_section === 'work').length;
+  const societyCandidates = candidates.filter(candidate => candidate.detected_section === 'society').length;
+  console.log(`Candidate pool: ${candidates.length} total / work=${workCandidates} / society=${societyCandidates}`);
+
+  if (workCandidates < 5 || societyCandidates < 2) {
+    throw new Error(`Not enough candidates. Need at least work=5 and society=2, got work=${workCandidates}, society=${societyCandidates}. Add RSS sources or increase lookback_days in data/sources.json.`);
   }
 
-  console.log('Collecting and generating with OpenAI web_search.');
-  const generated = await generateWithValidationRetry({
-    today,
-    sourceConfig,
-    topicWeights,
-    comments: summarizeComments(comments)
-  });
+  const selection = await callOpenAI({ today, candidates, topicWeights, comments });
+  validateSelection(selection, candidates);
+  const rows = selectedRows({ selection, candidates, today });
 
-  const newRows = generated.items.map((item, index) => rowFromGeneratedItem(today, item, index));
-
-  const preservedRows = replaceToday
-    ? existingBriefings.filter(row => row.date !== today)
-    : existingBriefings;
-
-  const updatedRows = [...preservedRows, ...newRows];
-  const csv = toCSV(updatedRows, BRIEFING_HEADERS);
+  console.log('Generated rows:');
+  for (const row of rows) {
+    console.log(`- [${row.section}] ${row.title} — ${row.source_name} ${row.source_url}`);
+  }
 
   if (dryRun) {
-    console.log('DRY_RUN=true; generated rows:');
-    console.log(toCSV(newRows, BRIEFING_HEADERS));
+    console.log('DRY_RUN=true, not writing data/briefings.csv.');
     return;
   }
 
-  fs.writeFileSync(BRIEFINGS_PATH, csv, 'utf8');
-  console.log(`Updated ${BRIEFINGS_PATH} with ${newRows.length} rows for ${today}.`);
+  writeBriefings({ newRows: rows, today, replaceToday });
+  console.log(`Updated ${BRIEFINGS_PATH}`);
 }
 
 main().catch(error => {
-  console.error(error);
+  console.error(error.stack || error.message);
   process.exit(1);
 });
