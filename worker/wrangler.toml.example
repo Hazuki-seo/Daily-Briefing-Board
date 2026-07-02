@@ -1,0 +1,23 @@
+name = "daily-news-comment-api"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+[vars]
+# GitHubのユーザー名、またはOrganization名
+GITHUB_OWNER = "YOUR_GITHUB_USER_OR_ORG"
+
+# ニュースボードのリポジトリ名
+GITHUB_REPO = "daily-news-briefing"
+
+# 通常は main のままでOK
+GITHUB_BRANCH = "main"
+
+# コメントCSVの保存先
+COMMENTS_PATH = "data/comments.csv"
+
+# GitHub PagesのURLを入れると、そのURLからの投稿だけ許可できます。
+# 最初は * でも動きますが、公開後は https://YOURNAME.github.io に変えるのがおすすめです。
+ALLOWED_ORIGIN = "*"
+
+# 任意。site/config.js の PASSCODE_ENABLED を true にし、Cloudflare Worker側にも SUBMIT_PASSCODE secret を入れると合言葉制にできます。
+# SUBMIT_PASSCODE は secret に入れるので、ここには書きません。

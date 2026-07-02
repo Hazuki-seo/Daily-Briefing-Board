@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>今日のニュースボード</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <p class="eyebrow">Daily Briefing Board</p>
+      <h1>今日のニュース</h1>
+      <p class="lead">企画・提案・調査に使えるインサイト5本＋押さえておきたい時事2本。コメントや参考URLをもとに、翌日以降に追うテーマを育てていくニュースボードです。</p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel panel--hero" id="today-panel">
+      <div class="panel-heading">
+        <p class="eyebrow">Today</p>
+        <h2 id="today-title">読み込み中...</h2>
+      </div>
+      <div class="summary-grid">
+        <div>
+          <span class="summary-number" id="work-count">-</span>
+          <span class="summary-label">業務インサイト</span>
+        </div>
+        <div>
+          <span class="summary-number" id="society-count">-</span>
+          <span class="summary-label">時事チェック</span>
+        </div>
+        <div>
+          <span class="summary-number" id="comment-count">-</span>
+          <span class="summary-label">承認済みコメント</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <p class="eyebrow">Business Insights</p>
+        <h2>業務インサイト5本</h2>
+      </div>
+      <div id="work-news" class="card-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <p class="eyebrow">World & Japan</p>
+        <h2>時事チェック2本</h2>
+      </div>
+      <div id="society-news" class="card-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <p class="eyebrow">Feedback</p>
+        <h2>コメント・参考URLを送る</h2>
+        <p>「もっと追いたい」「提案に使えそう」「このURLも参考になる」などを投稿できます。投稿者名は表示されます。</p>
+      </div>
+
+      <form id="comment-form" class="comment-form">
+        <div class="form-row">
+          <label>
+            投稿者名 <span class="required">必須</span>
+            <input type="text" name="name" required maxlength="80" placeholder="例：山田" />
+          </label>
+          <label>
+            対象ニュースID <span class="required">必須</span>
+            <input type="text" name="briefing_id" id="briefing-id-input" required placeholder="例：20260702-03" />
+          </label>
+        </div>
+
+        <label>
+          コメント <span class="required">必須</span>
+          <textarea name="comment" required maxlength="1000" placeholder="例：このテーマは設備保全の提案にも使えそう。明日は関連事例をもう少し見たいです。"></textarea>
+        </label>
+
+        <div class="form-row">
+          <label>
+            関連URL
+            <input type="url" name="related_url" placeholder="https://..." />
+          </label>
+          <label>
+            タグ
+            <input type="text" name="tags" placeholder="例：製造業;保全;AI" />
+          </label>
+        </div>
+
+        <label id="passcode-field" class="passcode-field hidden">
+          合言葉
+          <input type="password" name="passcode" autocomplete="off" placeholder="必要な場合のみ" />
+        </label>
+
+        <input type="text" name="website" class="hidden-field" tabindex="-1" autocomplete="off" />
+
+        <button type="submit" id="submit-button">投稿する</button>
+        <p id="form-message" class="form-message"></p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <p class="eyebrow">Archive</p>
+        <h2>過去のニュース</h2>
+      </div>
+      <div id="archive-list" class="archive-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <p class="eyebrow">Topic Signals</p>
+        <h2>いま強めに追うテーマ</h2>
+      </div>
+      <div id="topic-weights" class="tag-list"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>CSV on GitHub / Built by GitHub Actions</p>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

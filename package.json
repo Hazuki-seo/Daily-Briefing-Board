@@ -1,0 +1,14 @@
+{
+  "name": "daily-news-briefing-board",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Pages + GitHub Actions based daily briefing board with CSV data.",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "update-topic-weights": "node scripts/update-topic-weights.js",
+    "validate": "node scripts/validate-data.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
