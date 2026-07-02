@@ -1,0 +1,66 @@
+{
+  "lookback_days": 7,
+  "max_candidates_per_query": 12,
+  "queries": [
+    {
+      "section": "work",
+      "category": "AI・テック",
+      "label": "AI・テック / フィジカルAI / エージェント",
+      "query": "(\"physical AI\" OR \"AI agent\" OR \"AI agents\" OR \"robotics\" OR \"OpenAI\" OR \"NVIDIA\" OR \"industrial AI\")"
+    },
+    {
+      "section": "work",
+      "category": "印刷・製造業",
+      "label": "製造業DX / スマートファクトリー / 省人化",
+      "query": "(\"manufacturing DX\" OR \"smart factory\" OR \"industrial automation\" OR \"predictive maintenance\" OR \"factory automation\")"
+    },
+    {
+      "section": "work",
+      "category": "印刷・製造業",
+      "label": "印刷 / デジタルプリント / カスタマイズ",
+      "query": "(\"printing industry\" OR \"digital printing\" OR \"DTF printing\" OR \"custom printing\" OR \"print business\")"
+    },
+    {
+      "section": "work",
+      "category": "デザイン・UX",
+      "label": "デザイン・UX / AIデザイン / プロダクト開発",
+      "query": "(\"UX design\" OR \"product design\" OR \"Figma\" OR \"Adobe\" OR \"AI design tools\")"
+    },
+    {
+      "section": "work",
+      "category": "ゲーミフィケーション",
+      "label": "ゲーミフィケーション / 行動変容 / 教育",
+      "query": "(\"gamification\" OR \"gameful design\" OR \"behavior change\" OR \"learning engagement\")"
+    },
+    {
+      "section": "society",
+      "category": "国内情勢",
+      "label": "国内情勢 / 日本経済 / 政策",
+      "query": "(\"Japan economy\" OR \"Bank of Japan\" OR \"Japanese government\" OR \"Japan election\" OR \"Japan inflation\")"
+    },
+    {
+      "section": "society",
+      "category": "国際情勢",
+      "label": "国際情勢 / 安全保障 / 地政学",
+      "query": "(\"NATO\" OR \"Ukraine\" OR \"China US\" OR \"Middle East\" OR \"trade policy\" OR \"tariffs\")"
+    }
+  ],
+  "preferred_domains": [
+    "nedo.go.jp",
+    "meti.go.jp",
+    "boj.or.jp",
+    "prtimes.jp",
+    "segaxd.co.jp",
+    "figma.com",
+    "openai.com",
+    "adobe.com",
+    "nvidia.com",
+    "manufacturing-world.jp",
+    "nato.int",
+    "reuters.com",
+    "apnews.com",
+    "bbc.com",
+    "nhk.or.jp",
+    "nikkei.com"
+  ]
+}

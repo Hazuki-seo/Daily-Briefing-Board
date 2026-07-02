@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node scripts/build.js",
     "update-topic-weights": "node scripts/update-topic-weights.js",
-    "validate": "node scripts/validate-data.js"
+    "validate": "node scripts/validate-data.js",
+    "update-briefings": "node scripts/update-briefings.js"
   },
   "engines": {
     "node": ">=20"
