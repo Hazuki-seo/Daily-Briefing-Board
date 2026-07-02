@@ -419,8 +419,9 @@ textarea {
 .article-image img {
   display: block;
   width: 100%;
-  max-height: 240px;
-  object-fit: cover;
+  height: clamp(260px, 38vw, 420px);
+  object-fit: contain;
+  object-position: center center;
   border-radius: 16px;
   border: 1px solid var(--line);
   background: #edf3ef;
