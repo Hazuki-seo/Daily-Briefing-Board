@@ -46,6 +46,7 @@ function compactDate(value) {
 }
 
 function readJSON(filePath) {
+  if (!fs.existsSync(filePath)) return {};
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
@@ -56,137 +57,6 @@ function readCSV(filePath) {
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-function hostnameFromUrl(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch (_) {
-    return '';
-  }
-}
-
-function asISODate(value) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-
-  // GDELT often returns YYYYMMDDHHMMSS.
-  const gdelt = text.match(/^(\d{4})(\d{2})(\d{2})/);
-  if (gdelt) return `${gdelt[1]}-${gdelt[2]}-${gdelt[3]}`;
-
-  const date = new Date(text);
-  if (!Number.isNaN(date.getTime())) {
-    return date.toISOString().slice(0, 10);
-  }
-
-  return text.slice(0, 10);
-}
-
-function daysAgoDate(days) {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() - days);
-  return date;
-}
-
-function withinLookback(value, lookbackDays) {
-  const text = String(value || '').trim();
-  if (!text) return true;
-  const parsed = new Date(asISODate(text));
-  if (Number.isNaN(parsed.getTime())) return true;
-  return parsed >= daysAgoDate(lookbackDays + 1);
-}
-
-function candidateKey(candidate) {
-  return normalizeWhitespace(candidate.url || candidate.title).toLowerCase();
-}
-
-function scoreCandidate(candidate, preferredDomains, topicWeights) {
-  let score = 0;
-  const domain = candidate.domain || hostnameFromUrl(candidate.url);
-  if (preferredDomains.some(preferred => domain.endsWith(preferred))) score += 3;
-
-  const haystack = `${candidate.title} ${candidate.source} ${candidate.category} ${candidate.label}`.toLowerCase();
-  for (const weight of topicWeights) {
-    const keyword = String(weight.keyword || '').toLowerCase();
-    if (keyword && haystack.includes(keyword)) {
-      score += Number(weight.weight || 0) / 2;
-    }
-  }
-
-  if (candidate.image) score += 0.5;
-  if (candidate.section === 'work') score += 0.2;
-  return score;
-}
-
-async function fetchGdelt(queryConfig, sourceConfig) {
-  const max = Number(sourceConfig.max_candidates_per_query || 12);
-  const lookbackDays = Number(sourceConfig.lookback_days || 7);
-  const url = new URL('https://api.gdeltproject.org/api/v2/doc/doc');
-  url.searchParams.set('query', queryConfig.query);
-  url.searchParams.set('mode', 'artlist');
-  url.searchParams.set('format', 'json');
-  url.searchParams.set('maxrecords', String(max));
-  url.searchParams.set('sort', 'hybridrel');
-  url.searchParams.set('timespan', `${lookbackDays}d`);
-
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'daily-news-briefing-board/1.0'
-    }
-  });
-
-  if (!res.ok) {
-    console.warn(`GDELT request failed: ${res.status} ${res.statusText} for ${queryConfig.label}`);
-    return [];
-  }
-
-  const data = await res.json();
-  const articles = Array.isArray(data.articles) ? data.articles : [];
-
-  return articles
-    .filter(article => article && article.url && article.title)
-    .filter(article => withinLookback(article.seendate || article.datetime, lookbackDays))
-    .map(article => {
-      const domain = article.domain || hostnameFromUrl(article.url);
-      return {
-        section: queryConfig.section,
-        category: queryConfig.category,
-        label: queryConfig.label,
-        title: normalizeWhitespace(article.title),
-        url: article.url,
-        source: article.source || domain,
-        domain,
-        published_date: asISODate(article.seendate || article.datetime || article.publishedDate),
-        language: article.language || '',
-        source_country: article.sourcecountry || article.country || '',
-        image: article.socialimage || article.image || ''
-      };
-    });
-}
-
-async function collectCandidates(sourceConfig, topicWeights) {
-  const all = [];
-  for (const query of sourceConfig.queries || []) {
-    console.log(`Collecting: ${query.label}`);
-    const items = await fetchGdelt(query, sourceConfig);
-    all.push(...items);
-  }
-
-  const byKey = new Map();
-  for (const item of all) {
-    const key = candidateKey(item);
-    if (!key) continue;
-    if (!byKey.has(key)) byKey.set(key, item);
-  }
-
-  const preferredDomains = sourceConfig.preferred_domains || [];
-  return [...byKey.values()]
-    .map(item => ({
-      ...item,
-      score: scoreCandidate(item, preferredDomains, topicWeights)
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 90);
 }
 
 function summarizeComments(comments) {
@@ -255,42 +125,58 @@ function makeSchema() {
   };
 }
 
-function makePrompt(today, candidates, topicWeights, comments) {
-  return `あなたは日本語のニュース編集者です。以下の候補記事だけを材料に、ニュースボード用のデイリーブリーフィングを作成してください。\n\n` +
-    `日付: ${today}\n\n` +
-    `目的:\n` +
-    `- 「業務インサイト」5本: 印刷・製造業、デザイン・UX、AI・テック、ゲーミフィケーションを中心に、企画・提案・調査・資料作成に使えるニュースを選ぶ。\n` +
-    `- 「時事チェック」2本: 国内情勢・国際情勢から、社会の前提知識として押さえるべきニュースを選ぶ。\n\n` +
+function makePrompt(today, sourceConfig, topicWeights, comments) {
+  const themes = (sourceConfig.queries || []).map(query => ({
+    section: query.section,
+    category: query.category,
+    label: query.label,
+    search_hint: query.query
+  }));
+
+  return `あなたは日本語のニュース編集者です。Web検索を使って、ニュースボード用のデイリーブリーフィングを作成してください。\n\n` +
+    `日付: ${today}（日本時間）\n\n` +
+    `構成:\n` +
+    `- 業務インサイト5本: 印刷・製造業、デザイン・UX、AI・テック、ゲーミフィケーションを中心に、企画・提案・調査・資料作成に使えるニュースを選ぶ。\n` +
+    `- 時事チェック2本: 国内情勢・国際情勢から、社会の前提知識として押さえるべきニュースを選ぶ。\n\n` +
+    `検索方針:\n` +
+    `- 直近7日以内を基本に、公式発表・一次情報・信頼できる報道を優先する。\n` +
+    `- 公式発表、企業ニュースリリース、官公庁、展示会公式、信頼できる報道を優先する。\n` +
+    `- source_urlには、必ずWeb検索で確認できた実在URLを入れる。存在しないURLや推測URLを作らない。\n` +
+    `- source_image_urlは、記事や公式発表に紐づく画像URLが確認できる場合だけ入れる。分からない場合は空文字にする。\n` +
+    `- 1つの媒体・企業に偏りすぎないようにする。\n\n` +
     `必須ルール:\n` +
     `- itemsは必ず7本。section=workを5本、section=societyを2本にする。\n` +
     `- いつ・どこで・誰が・何をしたかが分かるように書く。記事に明記がない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
     `- 短文メモにしない。what_happened/background/watch_point/work_hint は、それぞれ前提を知らない人にも分かる2〜3文程度にする。\n` +
-    `- source_urlは候補記事のurlをそのまま使う。候補にないURLを作らない。\n` +
-    `- source_image_urlは候補記事にimageがあり、記事に紐づく画像として自然な場合だけ入れる。なければ空文字。\n` +
     `- summaryは1〜2文で要点を説明する。titleは日本語で、煽りすぎず具体的にする。\n` +
-    `- 重要度は1〜5。\n` +
+    `- importanceは1〜5の数字文字列にする。\n` +
     `- 直近コメントやtopic_weightsに関連するテーマは優先してよいが、低品質な記事は選ばない。\n\n` +
+    `探索テーマ:\n${JSON.stringify(themes, null, 2)}\n\n` +
+    `優先ドメイン候補:\n${JSON.stringify(sourceConfig.preferred_domains || [], null, 2)}\n\n` +
     `関心テーマ(topic_weights):\n${JSON.stringify(topicWeights.slice(0, 20), null, 2)}\n\n` +
-    `直近コメント:\n${JSON.stringify(comments, null, 2)}\n\n` +
-    `候補記事:\n${JSON.stringify(candidates, null, 2)}\n`;
+    `直近コメント:\n${JSON.stringify(comments, null, 2)}\n`;
 }
 
-async function callOpenAI({ today, candidates, topicWeights, comments }) {
+async function callOpenAI({ today, sourceConfig, topicWeights, comments }) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY is missing. Add it as a GitHub Actions repository secret.');
   }
 
-  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+  const model = process.env.OPENAI_MODEL || 'gpt-5.5';
   const body = {
     model,
+    tools: [
+      { type: 'web_search' }
+    ],
+    tool_choice: 'required',
     input: [
       {
         role: 'system',
         content: [
           {
             type: 'input_text',
-            text: 'あなたは日本語のニュース編集者です。必ず指定されたJSONスキーマに従い、根拠のない事実を作らず、候補記事だけを材料にしてください。'
+            text: 'あなたは日本語のニュース編集者です。必ず指定されたJSONスキーマに従ってください。Web検索で確認できた事実だけを使い、根拠のない事実・URL・画像URLを作らないでください。'
           }
         ]
       },
@@ -299,7 +185,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments }) {
         content: [
           {
             type: 'input_text',
-            text: makePrompt(today, candidates, topicWeights, comments)
+            text: makePrompt(today, sourceConfig, topicWeights, comments)
           }
         ]
       }
@@ -312,7 +198,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments }) {
         schema: makeSchema()
       }
     },
-    max_output_tokens: 9000
+    max_output_tokens: 12000
   };
 
   const res = await fetch('https://api.openai.com/v1/responses', {
@@ -395,15 +281,10 @@ async function main() {
     return;
   }
 
-  const candidates = await collectCandidates(sourceConfig, topicWeights);
-  console.log(`Collected ${candidates.length} candidate articles.`);
-  if (candidates.length < 14) {
-    console.warn('Candidate count is low. The model will still try to produce 7 items.');
-  }
-
+  console.log('Collecting and generating with OpenAI web_search.');
   const generated = await callOpenAI({
     today,
-    candidates,
+    sourceConfig,
     topicWeights,
     comments: summarizeComments(comments)
   });

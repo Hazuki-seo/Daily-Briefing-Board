@@ -1,22 +1,24 @@
-# Daily Briefing Board
+# Daily News Briefing Board v8.2
 
-GitHub Pagesで公開するニュースボードです。v8では、GitHub Actions + OpenAI API による毎朝のニュース自動更新に対応しています。
+GitHub Pagesで表示するニュースボードです。
 
-## 主な機能
+v8.2では、毎朝のニュース更新をGitHub ActionsからOpenAI Responses APIの `web_search` ツールで実行します。GDELT APIに依存しないため、GDELTの429/タイムアウトで全体が止まる問題を避けやすくしています。
 
-- 業務インサイト5本＋時事チェック2本を表示
-- GitHub ActionsでPagesへ自動デプロイ
-- `data/briefings.csv` を元にニュースを蓄積
-- `data/comments.csv` を元にコメントを表示
-- `data/topic_weights.csv` で関心テーマを管理
-- `update-briefings.yml` により、OpenAI APIで毎朝ブリーフィングを自動生成
+## Main workflow
 
-## 最初にやること
+```text
+.github/workflows/update-briefings.yml
+```
 
-1. このZIPの中身をリポジトリ直下へアップロード
-2. Settings → Pages → Source を GitHub Actions にする
-3. Actions → Build and deploy news board → Run workflow
-4. OpenAI APIキーを GitHub Secrets に `OPENAI_API_KEY` として登録
-5. Actions → Update daily briefings with OpenAI → Run workflow でテスト
+## Main script
 
-詳しい手順は `README-next-steps.md` を見てください。
+```text
+scripts/update-briefings.js
+```
+
+## Data
+
+```text
+data/briefings.csv
+data/sources.json
+```
