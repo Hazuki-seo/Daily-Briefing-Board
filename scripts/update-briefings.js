@@ -143,6 +143,8 @@ function makePrompt(today, sourceConfig, topicWeights, comments, validationFeedb
     `- 公式発表、企業ニュースリリース、官公庁、展示会公式、信頼できる報道を優先する。\n` +
     `- source_urlには、必ずWeb検索結果として確認できたURLをそのまま入れる。URLのslugを推測して作らない。存在しないURLや推測URLを絶対に作らない。\n` +
     `- source_urlは、そのニュースの個別記事・個別プレスリリース・個別発表資料・個別報道ページにする。企業トップページ、サービス紹介ページ、ニュース一覧ページ、カテゴリページ、採用ページ、汎用トップページは禁止。個別ページが見つからない場合は別のニュースを選ぶ。\n` +
+    `- URLはブラウザで直接開ける形にする。検索結果の見出しに対応する実在URLだけを採用し、架空の専門メディア名や架空slugを作らない。\n` +
+    `- 特に manufactur*dx*journal/news など、確認できないニュース風ドメインを推測で使わない。迷ったら官公庁・企業公式リリース・PR TIMES・Reuters/AP/BBC/NHK/Nikkei等の実在する個別ページを使う。\n` +
     `- source_urlは、このあと自動で疎通確認される。404/410/存在しないページ/トップページへのリダイレクトになるURLは失敗扱いになるため、検索結果に出た実在する個別URLだけを使う。\n` +
     `- source_nameは、source_urlのページ名や媒体名が分かる名前にする。企業名だけではなく、可能なら「企業名 ニュースリリース」「媒体名 記事」などにする。\n` +
     `- source_image_urlは、記事や公式発表に紐づく画像URLが確認できる場合だけ入れる。分からない場合は空文字にする。\n` +
@@ -235,6 +237,20 @@ async function callOpenAI({ today, sourceConfig, topicWeights, comments, validat
 }
 
 
+const BANNED_SOURCE_DOMAIN_PATTERNS = [
+  /(^|\.)manufacturing-dx-journal\.com$/i,
+  /(^|\.)manufacturing-dx-news\.com$/i
+];
+
+function isBannedSourceDomain(value) {
+  try {
+    const hostname = new URL(String(value || '')).hostname;
+    return BANNED_SOURCE_DOMAIN_PATTERNS.some(pattern => pattern.test(hostname));
+  } catch (_error) {
+    return true;
+  }
+}
+
 function isLikelyGenericSourceUrl(value) {
   try {
     const url = new URL(String(value || ''));
@@ -259,16 +275,45 @@ function isLikelyGenericSourceUrl(value) {
       '/company',
       '/about',
       '/products',
-      '/services'
+      '/services',
+      '/case',
+      '/cases',
+      '/case-studies',
+      '/examples',
+      '/solutions',
+      '/blog',
+      '/column'
     ]);
 
     if (genericPaths.has(lowerPath)) return true;
 
     const segments = lowerPath.split('/').filter(Boolean);
-    if (segments.length <= 1 && !/[0-9]{4}|article|release|detail|entry|post|news\//i.test(lowerPath)) {
-      return true;
-    }
+    const lastSegment = segments[segments.length - 1] || '';
+    const genericLastSegments = new Set([
+      'news',
+      'press',
+      'pressrelease',
+      'press-releases',
+      'newsroom',
+      'topics',
+      'information',
+      'products',
+      'services',
+      'solutions',
+      'case',
+      'cases',
+      'case-studies',
+      'examples',
+      'blog',
+      'column',
+      'category',
+      'tag'
+    ]);
 
+    if (genericLastSegments.has(lastSegment)) return true;
+
+    // Do NOT reject a single slug only because it lacks a date.
+    // Many legitimate article URLs are one slug, e.g. /some-article-title.
     return false;
   } catch (_error) {
     return true;
@@ -358,8 +403,8 @@ async function validateGenerated(generated) {
     if (!/^https?:\/\//.test(String(item.source_url || ''))) {
       throw new Error(`Item ${index + 1}: source_url must be http(s).`);
     }
-    if (isLikelyGenericSourceUrl(item.source_url)) {
-      throw new Error(`Item ${index + 1}: source_url looks like a top/list page, not a specific article/release: ${item.source_url}`);
+    if (isBannedSourceDomain(item.source_url)) {
+      throw new Error(`Item ${index + 1}: source_url domain is disallowed because it is often generated as an unverifiable/fake source: ${item.source_url}`);
     }
 
     const liveCheck = await checkSourceUrlLive(item.source_url);
@@ -369,11 +414,14 @@ async function validateGenerated(generated) {
     if (liveCheck.finalUrl && liveCheck.finalUrl !== item.source_url) {
       console.log(`Item ${index + 1}: source_url redirects to ${liveCheck.finalUrl}`);
     }
+    if (isLikelyGenericSourceUrl(liveCheck.finalUrl || item.source_url)) {
+      throw new Error(`Item ${index + 1}: source_url is a top/list/generic page, not a specific article/release: ${liveCheck.finalUrl || item.source_url}`);
+    }
   }
 }
 
 async function generateWithValidationRetry({ today, sourceConfig, topicWeights, comments }) {
-  const maxAttempts = Number(process.env.GENERATION_MAX_ATTEMPTS || 3);
+  const maxAttempts = Number(process.env.GENERATION_MAX_ATTEMPTS || 4);
   let validationFeedback = '';
   let lastError = null;
 
