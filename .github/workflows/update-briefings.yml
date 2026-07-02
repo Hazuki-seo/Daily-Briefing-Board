@@ -16,10 +16,20 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   update-briefings:
     runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
@@ -47,3 +57,22 @@ jobs:
         with:
           commit_message: 'Update daily briefing'
           file_pattern: data/briefings.csv data/sources.json
+
+      - name: Build static site
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: npm run build
+
+      - name: Setup Pages
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+      - name: Deploy to GitHub Pages
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        id: deployment
+        uses: actions/deploy-pages@v4
