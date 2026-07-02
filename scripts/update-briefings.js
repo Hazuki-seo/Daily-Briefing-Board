@@ -305,7 +305,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
       redirect: 'follow',
       ...options,
       headers: {
-        'User-Agent': 'daily-briefing-board/9.0 (+https://github.com/Hazuki-seo/Daily-Briefing-Board)',
+        'User-Agent': 'daily-briefing-board/9.1 (+https://github.com/Hazuki-seo/Daily-Briefing-Board)',
         'Accept': options.accept || 'text/html,application/xhtml+xml,application/xml,text/xml,application/rss+xml,application/atom+xml,*/*;q=0.8',
         ...(options.headers || {})
       },
@@ -535,7 +535,6 @@ function outputTextFromResponse(data) {
 function makeSchema() {
   const itemProperties = {
     candidate_id: { type: 'string' },
-    section: { type: 'string', enum: ['work', 'society'] },
     category: { type: 'string' },
     event_date: { type: 'string' },
     location: { type: 'string' },
@@ -550,30 +549,43 @@ function makeSchema() {
     importance: { type: 'string' }
   };
 
+  const itemSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: Object.keys(itemProperties),
+    properties: itemProperties
+  };
+
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['items'],
+    required: ['work_items', 'society_items'],
     properties: {
-      items: {
+      work_items: {
         type: 'array',
-        minItems: 7,
-        maxItems: 7,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: Object.keys(itemProperties),
-          properties: itemProperties
-        }
+        minItems: 5,
+        maxItems: 5,
+        items: itemSchema
+      },
+      society_items: {
+        type: 'array',
+        minItems: 2,
+        maxItems: 2,
+        items: itemSchema
       }
     }
   };
 }
 
-function makePrompt({ today, candidates, topicWeights, comments }) {
-  const candidatePayload = candidates.map(candidate => ({
+function flattenSelection(selection) {
+  const workItems = Array.isArray(selection?.work_items) ? selection.work_items.map(item => ({ ...item, section: 'work' })) : [];
+  const societyItems = Array.isArray(selection?.society_items) ? selection.society_items.map(item => ({ ...item, section: 'society' })) : [];
+  return [...workItems, ...societyItems];
+}
+
+function makePrompt({ today, candidates, topicWeights, comments, previousError = '' }) {
+  const toPayload = candidate => ({
     candidate_id: candidate.candidate_id,
-    detected_section: candidate.detected_section,
     detected_category: candidate.detected_category,
     source_name: candidate.source_name,
     published_date: candidate.published_date,
@@ -582,15 +594,21 @@ function makePrompt({ today, candidates, topicWeights, comments }) {
     description: normalizeWhitespace(candidate.description || '').slice(0, 700),
     article_excerpt: normalizeWhitespace(candidate.article_excerpt || '').slice(0, 900),
     domain: domainOf(candidate.source_url)
-  }));
+  });
+
+  const workCandidates = candidates.filter(candidate => candidate.detected_section === 'work').map(toPayload);
+  const societyCandidates = candidates.filter(candidate => candidate.detected_section === 'society').map(toPayload);
 
   return `あなたは日本語のニュース編集者です。下記の候補記事だけを使い、ニュースボード用のデイリーブリーフィングを作成してください。\n\n` +
     `日付: ${today}（日本時間）\n\n` +
+    (previousError ? `前回の出力は検証に失敗しました。今回は必ず修正してください。検証エラー:\n${previousError}\n\n` : '') +
     `最重要ルール:\n` +
     `- source_urlは出力しない。URLはシステム側でcandidate_idから元記事URLをコピーする。\n` +
     `- 候補一覧にない記事、候補一覧にないURL、推測した事実は使わない。\n` +
     `- candidate_idは候補一覧に存在するものだけを使う。7本すべて別のcandidate_idにする。\n` +
-    `- 業務インサイトはsection=workで5本、時事チェックはsection=societyで2本。\n` +
+    `- work_items は「業務インサイト」専用。必ず WORK候補記事一覧から5本だけ選ぶ。\n` +
+    `- society_items は「時事チェック」専用。必ず SOCIETY候補記事一覧から2本だけ選ぶ。\n` +
+    `- work_items にSOCIETY候補のcandidate_idを入れない。society_items にWORK候補のcandidate_idを入れない。\n` +
     `- 業務インサイトは、印刷・製造業、デザイン・UX、AI・テック、ゲーミフィケーション、企画・提案・調査・資料作成に使える内容を優先する。\n` +
     `- 時事チェックは、国内情勢・国際情勢から社会の前提知識として押さえるべき内容を選ぶ。\n` +
     `- いつ・どこで・誰が・何をしたかが分かるように書く。候補にない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
@@ -599,10 +617,11 @@ function makePrompt({ today, candidates, topicWeights, comments }) {
     `- categoryは「AI・テック」「印刷・製造業」「デザイン・UX」「ゲーミフィケーション」「国内情勢」「国際情勢」のいずれかを基本にする。\n\n` +
     `関心テーマ(topic_weights):\n${JSON.stringify(topicWeights.slice(0, 20), null, 2)}\n\n` +
     `直近コメント:\n${JSON.stringify(comments, null, 2)}\n\n` +
-    `候補記事一覧:\n${JSON.stringify(candidatePayload, null, 2)}\n`;
+    `WORK候補記事一覧（work_itemsはこの中から5本だけ）:\n${JSON.stringify(workCandidates, null, 2)}\n\n` +
+    `SOCIETY候補記事一覧（society_itemsはこの中から2本だけ）:\n${JSON.stringify(societyCandidates, null, 2)}\n`;
 }
 
-async function callOpenAI({ today, candidates, topicWeights, comments }) {
+async function callOpenAI({ today, candidates, topicWeights, comments, previousError = '' }) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY is missing. Add it as a GitHub Actions repository secret.');
 
@@ -624,7 +643,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments }) {
         content: [
           {
             type: 'input_text',
-            text: makePrompt({ today, candidates, topicWeights, comments })
+            text: makePrompt({ today, candidates, topicWeights, comments, previousError })
           }
         ]
       }
@@ -632,7 +651,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments }) {
     text: {
       format: {
         type: 'json_schema',
-        name: 'daily_briefing_selection',
+        name: 'daily_briefing_selection_v9_1',
         strict: true,
         schema: makeSchema()
       }
@@ -667,35 +686,49 @@ async function callOpenAI({ today, candidates, topicWeights, comments }) {
 }
 
 function validateSelection(selection, candidates) {
-  if (!selection || !Array.isArray(selection.items)) throw new Error('OpenAI output does not contain items array.');
-  if (selection.items.length !== 7) throw new Error(`Expected 7 items, got ${selection.items.length}.`);
+  if (!selection || !Array.isArray(selection.work_items) || !Array.isArray(selection.society_items)) {
+    throw new Error('OpenAI output must contain work_items array and society_items array.');
+  }
+  if (selection.work_items.length !== 5) throw new Error(`Expected 5 work_items, got ${selection.work_items.length}.`);
+  if (selection.society_items.length !== 2) throw new Error(`Expected 2 society_items, got ${selection.society_items.length}.`);
 
   const candidateMap = new Map(candidates.map(candidate => [candidate.candidate_id, candidate]));
   const used = new Set();
   const errors = [];
-  let workCount = 0;
-  let societyCount = 0;
 
-  for (const [index, item] of selection.items.entries()) {
-    if (!candidateMap.has(item.candidate_id)) errors.push(`Item ${index + 1}: unknown candidate_id ${item.candidate_id}`);
-    if (used.has(item.candidate_id)) errors.push(`Item ${index + 1}: duplicate candidate_id ${item.candidate_id}`);
-    used.add(item.candidate_id);
-    if (item.section === 'work') workCount += 1;
-    if (item.section === 'society') societyCount += 1;
-    if (!['work', 'society'].includes(item.section)) errors.push(`Item ${index + 1}: invalid section ${item.section}`);
-    if (!String(item.title || '').trim()) errors.push(`Item ${index + 1}: missing title`);
-    if (!String(item.what_happened || '').trim()) errors.push(`Item ${index + 1}: missing what_happened`);
+  const groups = [
+    ['work_items', selection.work_items, 'work'],
+    ['society_items', selection.society_items, 'society']
+  ];
+
+  for (const [groupName, items, expectedSection] of groups) {
+    for (const [index, item] of items.entries()) {
+      const label = `${groupName}[${index + 1}]`;
+      const candidate = candidateMap.get(item.candidate_id);
+      if (!candidate) {
+        errors.push(`${label}: unknown candidate_id ${item.candidate_id}`);
+        continue;
+      }
+      if (used.has(item.candidate_id)) errors.push(`${label}: duplicate candidate_id ${item.candidate_id}`);
+      used.add(item.candidate_id);
+      if (candidate.detected_section !== expectedSection) {
+        errors.push(`${label}: candidate_id ${item.candidate_id} belongs to ${candidate.detected_section}, not ${expectedSection}`);
+      }
+      if (!String(item.title || '').trim()) errors.push(`${label}: missing title`);
+      if (!String(item.what_happened || '').trim()) errors.push(`${label}: missing what_happened`);
+      if (!String(item.background || '').trim()) errors.push(`${label}: missing background`);
+      if (!String(item.watch_point || '').trim()) errors.push(`${label}: missing watch_point`);
+      if (!String(item.work_hint || '').trim()) errors.push(`${label}: missing work_hint`);
+    }
   }
-
-  if (workCount !== 5) errors.push(`Expected 5 work items, got ${workCount}.`);
-  if (societyCount !== 2) errors.push(`Expected 2 society items, got ${societyCount}.`);
 
   if (errors.length) throw new Error(errors.join('\n'));
 }
 
 function selectedRows({ selection, candidates, today }) {
   const candidateMap = new Map(candidates.map(candidate => [candidate.candidate_id, candidate]));
-  return selection.items.map((item, index) => {
+  const items = flattenSelection(selection);
+  return items.map((item, index) => {
     const candidate = candidateMap.get(item.candidate_id);
     return {
       date: today,
@@ -747,8 +780,24 @@ async function main() {
     throw new Error(`Not enough candidates. Need at least work=5 and society=2, got work=${workCandidates}, society=${societyCandidates}. Add RSS sources or increase lookback_days in data/sources.json.`);
   }
 
-  const selection = await callOpenAI({ today, candidates, topicWeights, comments });
-  validateSelection(selection, candidates);
+  let selection = null;
+  let previousError = '';
+  const maxAttempts = 4;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) console.log(`Retrying OpenAI selection. Attempt ${attempt}/${maxAttempts}.`);
+    selection = await callOpenAI({ today, candidates, topicWeights, comments, previousError });
+    try {
+      validateSelection(selection, candidates);
+      previousError = '';
+      break;
+    } catch (error) {
+      previousError = error.message;
+      if (attempt === maxAttempts) throw error;
+      console.warn(`Selection validation failed:
+${previousError}`);
+    }
+  }
+
   const rows = selectedRows({ selection, candidates, today });
 
   console.log('Generated rows:');
