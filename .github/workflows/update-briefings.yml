@@ -8,10 +8,12 @@ on:
         required: false
         default: 'true'
       dry_run:
-        description: 'Generate but do not commit'
+        description: 'Generate but do not commit/deploy'
         required: false
         default: 'false'
   schedule:
+    # GitHub Actions の cron は UTC 基準です。
+    # UTC 23:20 = 日本時間 08:20。日〜木UTCで、JSTでは月〜金の朝に相当します。
     - cron: '20 23 * * 0-4'
 
 permissions:
@@ -21,16 +23,11 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  update-briefings:
+  update-build-deploy:
     runs-on: ubuntu-latest
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,9 +67,8 @@ jobs:
         if: ${{ github.event.inputs.dry_run != 'true' }}
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: dist
 
       - name: Deploy to GitHub Pages
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        id: deployment
         uses: actions/deploy-pages@v4
