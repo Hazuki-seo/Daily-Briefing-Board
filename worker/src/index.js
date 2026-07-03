@@ -6,16 +6,16 @@ export default {
 
     const url = new URL(request.url);
 
+    if (request.method === 'GET' && url.pathname === '/health') {
+      return json({ ok: true, name: 'briefing-comments', version: 'v10' }, 200, env);
+    }
+
     if (request.method === 'POST' && url.pathname === '/comment') {
       try {
         return await handleComment(request, env);
       } catch (error) {
-        return json({ ok: false, message: error.message }, 500, env);
+        return json({ ok: false, message: error.message || 'Internal error' }, 500, env);
       }
-    }
-
-    if (request.method === 'GET' && url.pathname === '/health') {
-      return json({ ok: true, name: 'daily-news-comment-api' }, 200, env);
     }
 
     return json({ ok: false, message: 'Not found' }, 404, env);
@@ -34,10 +34,10 @@ async function handleComment(request, env) {
   }
 
   const name = sanitize(body.name, 80);
-  const briefingId = sanitize(body.briefing_id, 80);
-  const comment = sanitize(body.comment, 1000);
-  const relatedUrl = sanitize(body.related_url || '', 500);
-  const tags = sanitize(body.tags || '', 200);
+  const briefingId = sanitize(body.briefing_id, 120);
+  const comment = sanitize(body.comment, 1200);
+  const relatedUrl = sanitize(body.related_url || '', 600);
+  const tags = sanitize(body.tags || '', 240);
 
   if (!name || !briefingId || !comment) {
     return json({ ok: false, message: '投稿者名、対象ニュースID、コメントは必須です' }, 400, env);
@@ -60,18 +60,17 @@ async function handleComment(request, env) {
 
   await appendToGitHubCSV(env, newLine);
 
-  return json({ ok: true }, 200, env);
+  return json({ ok: true, message: '投稿しました' }, 200, env);
 }
 
 async function appendToGitHubCSV(env, newLine) {
   const owner = required(env.GITHUB_OWNER, 'GITHUB_OWNER');
   const repo = required(env.GITHUB_REPO, 'GITHUB_REPO');
   const branch = env.GITHUB_BRANCH || 'main';
-  const path = env.COMMENTS_PATH || 'data/comments.csv';
+  const filePath = env.COMMENTS_PATH || 'data/comments.csv';
 
-  // GitHub Contents APIは同時更新に弱いので、軽くリトライする。
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const file = await getGitHubFile(env, owner, repo, path, branch);
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const file = await getGitHubFile(env, owner, repo, filePath, branch);
     const currentText = file.exists
       ? fromBase64(file.content)
       : 'created_at,briefing_id,name,comment,related_url,tags,status\n';
@@ -80,19 +79,19 @@ async function appendToGitHubCSV(env, newLine) {
       ? currentText + newLine
       : currentText + '\n' + newLine;
 
-    const result = await putGitHubFile(env, owner, repo, path, branch, updatedText, file.sha);
+    const result = await putGitHubFile(env, owner, repo, filePath, branch, updatedText, file.sha);
     if (result.ok) return;
 
-    if (attempt === 3) {
+    if (!isGitHubConflict(result.status) || attempt === 5) {
       throw new Error(`GitHub更新に失敗しました: ${result.message}`);
     }
 
-    await sleep(300 * attempt);
+    await sleep(400 * attempt);
   }
 }
 
-async function getGitHubFile(env, owner, repo, path, branch) {
-  const endpoint = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponentPath(path)}?ref=${encodeURIComponent(branch)}`;
+async function getGitHubFile(env, owner, repo, filePath, branch) {
+  const endpoint = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponentPath(filePath)}?ref=${encodeURIComponent(branch)}`;
   const res = await fetch(endpoint, { headers: githubHeaders(env) });
 
   if (res.status === 404) return { exists: false, sha: null, content: '' };
@@ -102,12 +101,12 @@ async function getGitHubFile(env, owner, repo, path, branch) {
     throw new Error(`GitHubファイル取得に失敗しました: ${text}`);
   }
 
-  const json = await res.json();
-  return { exists: true, sha: json.sha, content: json.content || '' };
+  const data = await res.json();
+  return { exists: true, sha: data.sha, content: data.content || '' };
 }
 
-async function putGitHubFile(env, owner, repo, path, branch, content, sha) {
-  const endpoint = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponentPath(path)}`;
+async function putGitHubFile(env, owner, repo, filePath, branch, content, sha) {
+  const endpoint = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponentPath(filePath)}`;
   const payload = {
     message: `Add news comment ${new Date().toISOString()}`,
     content: toBase64(content),
@@ -122,10 +121,10 @@ async function putGitHubFile(env, owner, repo, path, branch, content, sha) {
     body: JSON.stringify(payload)
   });
 
-  if (res.ok) return { ok: true };
+  if (res.ok) return { ok: true, status: res.status, message: '' };
 
   const text = await res.text();
-  return { ok: false, message: text };
+  return { ok: false, status: res.status, message: text };
 }
 
 function githubHeaders(env) {
@@ -133,14 +132,14 @@ function githubHeaders(env) {
     Authorization: `Bearer ${required(env.GITHUB_TOKEN, 'GITHUB_TOKEN')}`,
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'daily-news-comment-api'
+    'User-Agent': 'briefing-comments-worker'
   };
 }
 
 function corsHeaders(env) {
   return {
     'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
   };
 }
@@ -156,7 +155,11 @@ function json(data, status = 200, env = {}) {
 }
 
 function sanitize(value, maxLength) {
-  return String(value || '').trim().slice(0, maxLength);
+  return String(value || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
 }
 
 function csvEscape(value) {
@@ -169,8 +172,7 @@ function toBase64(text) {
   let binary = '';
   const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   return btoa(binary);
 }
@@ -184,13 +186,17 @@ function fromBase64(base64Text) {
   return new TextDecoder().decode(bytes);
 }
 
-function encodeURIComponentPath(path) {
-  return path.split('/').map(encodeURIComponent).join('/');
+function encodeURIComponentPath(filePath) {
+  return filePath.split('/').map(encodeURIComponent).join('/');
 }
 
 function required(value, name) {
   if (!value) throw new Error(`${name} is required`);
   return value;
+}
+
+function isGitHubConflict(status) {
+  return status === 409 || status === 422;
 }
 
 function sleep(ms) {
