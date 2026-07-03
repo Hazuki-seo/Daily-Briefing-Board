@@ -3,18 +3,31 @@ name: Update topic weights from comments
 on:
   workflow_dispatch:
   schedule:
-    # UTC 23:00 = 日本時間 08:00。JSTでは月〜金の朝に相当。
+    # 23:00 UTC = JST 08:00。日〜木UTCで、JSTでは月〜金朝。
     - cron: '0 23 * * 0-4'
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -24,8 +37,33 @@ jobs:
       - name: Update topic weights
         run: npm run update-topic-weights
 
-      - name: Commit changes if needed
-        uses: stefanzweifel/git-auto-commit-action@v5
+      - name: Commit topic weight update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add data/topic_weights.csv
+
+          if git diff --cached --quiet; then
+            echo "No topic weight changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update topic weights from comments"
+          git pull --rebase origin main
+          git push
+
+      - name: Build static site
+        run: npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          commit_message: 'Update topic weights from comments'
-          file_pattern: data/topic_weights.csv
+          path: ./dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
