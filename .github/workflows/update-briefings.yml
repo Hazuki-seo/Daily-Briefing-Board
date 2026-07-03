@@ -48,10 +48,20 @@ jobs:
 
       - name: Commit briefing update
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 'Update daily briefing'
-          file_pattern: data/briefings.csv data/sources.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add data/briefings.csv data/sources.json
+
+          if git diff --cached --quiet; then
+            echo "No briefing changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update daily briefing"
+          git pull --rebase origin main
+          git push
 
       - name: Build static site
         if: ${{ github.event.inputs.dry_run != 'true' }}
