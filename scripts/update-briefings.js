@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { parseCSV, toCSV } = require('./csv-utils');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -54,6 +55,20 @@ function todayJST() {
 
 function compactDate(value) {
   return String(value || '').replaceAll('-', '');
+}
+
+
+function shortHash(value, length = 8) {
+  return crypto
+    .createHash('sha1')
+    .update(String(value || '').trim().toLowerCase())
+    .digest('hex')
+    .slice(0, length);
+}
+
+function stableArticleId({ today, section, sourceUrl }) {
+  const safeSection = String(section || 'item').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'item';
+  return `${compactDate(today)}-${safeSection}-${shortHash(sourceUrl || '')}`;
 }
 
 function readJSON(filePath, fallback = {}) {
@@ -610,6 +625,8 @@ function makePrompt({ today, candidates, topicWeights, comments, previousError =
     `- society_items は「時事チェック」専用。必ず SOCIETY候補記事一覧から2本だけ選ぶ。\n` +
     `- work_items にSOCIETY候補のcandidate_idを入れない。society_items にWORK候補のcandidate_idを入れない。\n` +
     `- 業務インサイトは、印刷・製造業、デザイン・UX、AI・テック、ゲーミフィケーション、企画・提案・調査・資料作成に使える内容を優先する。\n` +
+    `- 直近コメントやtopic_weightsで「もっと見たい」「追いたい」「使える」と示されたテーマは、候補に該当記事がある限り優先する。候補があるのに無視しない。\n` +
+    `- 特にゲーミフィケーション、製造業DX、AI活用、デザイン/UXなどの要望コメントがある場合、WORK候補内に近い記事があればwork_itemsに最低1本は入れる。ただし候補に存在しない記事を作らない。\n` +
     `- 時事チェックは、国内情勢・国際情勢から社会の前提知識として押さえるべき内容を選ぶ。\n` +
     `- いつ・どこで・誰が・何をしたかが分かるように書く。候補にない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
     `- what_happened/background/watch_point/work_hint は、それぞれ前提を知らない人にも分かる2〜3文程度にする。\n` +
@@ -732,7 +749,7 @@ function selectedRows({ selection, candidates, today }) {
     const candidate = candidateMap.get(item.candidate_id);
     return {
       date: today,
-      id: `${compactDate(today)}-${String(index + 1).padStart(2, '0')}`,
+      id: stableArticleId({ today, section: item.section, sourceUrl: candidate.source_url }),
       section: item.section,
       category: normalizeWhitespace(item.category || candidate.detected_category),
       source_name: normalizeWhitespace(candidate.source_name),
