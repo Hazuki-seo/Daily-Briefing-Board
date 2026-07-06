@@ -12,9 +12,6 @@ on:
       - '.nojekyll'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
-  schedule:
-    # UTC 00:05 = 日本時間 09:05。月〜金だけ実行。
-    - cron: '5 0 * * 1-5'
 
 permissions:
   contents: read
