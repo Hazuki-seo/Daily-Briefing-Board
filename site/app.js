@@ -93,6 +93,8 @@ function splitStructuredText(value) {
   const text = String(value || '').trim();
   if (!text) return [];
 
+  // 【要約】本文【論点】本文 のような明示ラベルだけを構造化する。
+  // 日本語の中黒「・」は「背景・文脈」「営業・管理」のように普通の文章内でも使うため、分割条件にしない。
   const labelPattern = /[【\[]([^】\]]{2,12})[】\]]/g;
   const matches = [...text.matchAll(labelPattern)];
   if (matches.length) {
@@ -101,15 +103,22 @@ function splitStructuredText(value) {
       const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
       return {
         label: match[1].trim(),
-        body: text.slice(start, end).replace(/^[:：\s-]+/, '').trim()
+        body: text.slice(start, end).replace(/^[:：\s\-・•]+/, '').trim()
       };
     }).filter(part => part.body);
   }
 
-  const lines = text.split(/\n|\r|\s*[・•]\s*/).map(line => line.trim()).filter(Boolean);
-  if (lines.length > 1) return lines.map(line => ({ label: '', body: line }));
+  // 改行箇条だけを分割する。「・」単体では分割しない。
+  const bulletLines = text
+    .split(/\r?\n/)
+    .map(line => line.replace(/^\s*[-–—・•]\s*/, '').trim())
+    .filter(Boolean);
 
-  return [{ label: '', body: text }];
+  if (bulletLines.length > 1) {
+    return bulletLines.map(line => ({ label: '', body: line }));
+  }
+
+  return [{ label: '', body: text.replace(/\s+/g, ' ') }];
 }
 
 function renderStructuredText(value) {
@@ -123,7 +132,7 @@ function renderStructuredText(value) {
   return `
     <ul class="analysis-list">
       ${parts.map(part => `
-        <li>
+        <li class="${part.label ? 'has-label' : 'no-label'}">
           ${part.label ? `<strong>${escapeHTML(part.label)}</strong>` : ''}
           <span>${escapeHTML(part.body)}</span>
         </li>
