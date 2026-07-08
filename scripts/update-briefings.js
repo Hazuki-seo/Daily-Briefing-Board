@@ -33,13 +33,37 @@ const BRIEFING_HEADERS = [
 ];
 
 const CATEGORY_KEYWORDS = {
-  'AI・テック': ['AI', '人工知能', '生成AI', 'LLM', 'OpenAI', 'NVIDIA', 'GPU', 'ロボット', 'robot', 'robotics', 'フィジカルAI', 'physical AI', 'エージェント', 'agent', '半導体', 'データセンター', '機械学習'],
-  '印刷・製造業': ['製造', 'ものづくり', '工場', '生産', 'スマートファクトリー', '設備', '保全', '自動化', '省人', 'ロボット', '印刷', 'プリント', 'デジタル印刷', 'DTF', '小ロット', 'カスタマイズ', 'industrial', 'manufacturing', 'factory', 'printing'],
-  'デザイン・UX': ['UX', 'UI', 'デザイン', 'ユーザー体験', 'Figma', 'Adobe', 'プロダクト', 'アクセシビリティ', 'クリエイティブ', 'design', 'product design'],
-  'ゲーミフィケーション': ['ゲーミフィケーション', 'ゲーム', 'game', 'gamification', '教育', '研修', '学習', '行動変容', 'ポイント', 'ランキング', 'バッジ', 'エンゲージメント'],
-  '国内情勢': ['日本', '政府', '国会', '日銀', '物価', '賃上げ', '選挙', '政策', '経済', '補助金', 'Japan', 'BOJ'],
-  '国際情勢': ['米国', '中国', 'ロシア', 'ウクライナ', '中東', 'イスラエル', 'NATO', 'EU', '関税', '貿易', '安全保障', 'Ukraine', 'China', 'tariff', 'Middle East']
+  'AI・テック': ['AI', '人工知能', '生成AI', 'LLM', 'OpenAI', 'NVIDIA', 'GPU', 'ロボット', 'robot', 'robotics', 'フィジカルAI', 'physical AI', 'エージェント', 'agent', '半導体', 'データセンター', '機械学習', '業務自動化', '企業導入', '法人向け'],
+  '印刷・製造業': ['製造', 'ものづくり', '工場', '生産', 'スマートファクトリー', '設備', '保全', '自動化', '省人', 'ロボット', '印刷', 'プリント', 'デジタル印刷', 'DTF', '小ロット', 'カスタマイズ', 'industrial', 'manufacturing', 'factory', 'printing', 'BtoB', 'サプライチェーン', '業務改善'],
+  'デザイン・UX': ['UX', 'UI', 'デザインリサーチ', 'ユーザー調査', 'ユーザー体験', 'アクセシビリティ', 'HCD', '人間中心設計', 'サービスデザイン', 'デザイン経営', 'デザインシステム', '知財', '特許', '意匠', 'design research', 'accessibility'],
+  'ゲーミフィケーション': ['ゲーミフィケーション', 'gamification', '行動変容', '動機づけ', 'ポイント', 'ランキング', 'バッジ', 'エンゲージメント', '研修', '学習効果', '社内浸透', '販促', 'ロイヤルティ', '習慣化', '健康増進', 'セガXD', 'Pokémon Sleep', 'Pokemon Sleep'],
+  '国内情勢': ['日本', '政府', '国会', '日銀', '物価', '賃上げ', '選挙', '政策', '経済', '補助金', 'Japan', 'BOJ', '産業政策', '規制', '企業'],
+  '国際情勢': ['米国', '中国', 'ロシア', 'ウクライナ', '中東', 'イスラエル', 'NATO', 'EU', '関税', '貿易', '安全保障', 'Ukraine', 'China', 'tariff', 'Middle East', 'サプライチェーン']
 };
+
+const BUSINESS_RELEVANCE_KEYWORDS = [
+  'BtoB', '法人', '企業', '業務', '事業', '市場', '産業', '経営', '収益', '提案', '営業', '販促', 'マーケティング', '顧客', '導入', '支援', 'DX', 'デジタル変革',
+  '業務改善', '生産性', '省人化', '自動化', '研修', '人材育成', '組織', '現場', '製造業', 'サプライチェーン', '知財', '特許', '規制', '政策',
+  'enterprise', 'business', 'industry', 'market', 'b2b', 'customer', 'workflow', 'productivity', 'automation', 'marketing', 'training'
+];
+
+const LOW_BUSINESS_VALUE_KEYWORDS = [
+  '発売', '新発売', '予約開始', 'カラー', 'かわいい', '可愛い', '限定色', 'グッズ', 'フィギュア', 'ぬいぐるみ', 'アニメ', '漫画', 'コラボ商品',
+  'PCケース', 'キーボード', 'マウス', 'ヘッドセット', 'ゲーム機', 'ゲーミング', 'ゲーミングpc', 'ゲームパッド', '周辺機器', '玩具', 'おもちゃ',
+  'consumer', 'gaming pc', 'keyboard', 'mouse', 'headset', 'console', 'toy'
+];
+
+const GAMIFICATION_CONTEXT_KEYWORDS = [
+  'ゲーミフィケーション', 'gamification', '行動変容', '動機づけ', '習慣化', '継続率', '参加率', 'エンゲージメント', 'ポイント', 'バッジ', 'ランキング',
+  'ミッション', 'クエスト', 'リワード', 'ロイヤルティ', '研修', '学習効果', '社内浸透', '販促', 'マーケティング施策', '健康増進',
+  'セガXD', 'Pokémon Sleep', 'Pokemon Sleep', 'ポケモンスリープ'
+];
+
+const DESIGN_BUSINESS_CONTEXT_KEYWORDS = [
+  'デザインリサーチ', 'ユーザー調査', 'UXリサーチ', 'HCD', '人間中心設計', 'アクセシビリティ', 'ユーザビリティ', 'サービスデザイン', 'デザイン経営',
+  'デザインシステム', 'A/Bテスト', '行動経済学', '認知心理', '特許', '知財', '意匠', '標準化', '研究', '調査結果', '論文', 'ガイドライン',
+  'design research', 'accessibility', 'usability', 'design system', 'research', 'intellectual property'
+];
 
 const SECTION_ORDER = { work: 0, society: 1 };
 
@@ -240,6 +264,13 @@ function dateJST(date) {
   }).format(date);
 }
 
+function ageDays(item) {
+  if (!item.published_at) return 999;
+  const published = new Date(item.published_at);
+  if (Number.isNaN(published.getTime())) return 999;
+  return Math.max(0, (Date.now() - published.getTime()) / 86400000);
+}
+
 function isWithinLookback(item, lookbackDays) {
   if (!item.published_at) return true;
   const published = new Date(item.published_at);
@@ -249,9 +280,54 @@ function isWithinLookback(item, lookbackDays) {
 }
 
 function textForMatch(item) {
-  return `${item.title} ${item.description}`.toLowerCase();
+  return `${item.title} ${item.description} ${item.page_title || ''} ${item.article_excerpt || ''}`.toLowerCase();
 }
 
+function containsAny(text, keywords) {
+  const normalized = String(text || '').toLowerCase();
+  return keywords.some(keyword => normalized.includes(String(keyword).toLowerCase()));
+}
+
+function businessRelevanceScore(item) {
+  const text = textForMatch(item);
+  let score = 0;
+  for (const keyword of BUSINESS_RELEVANCE_KEYWORDS) {
+    if (text.includes(String(keyword).toLowerCase())) score += 1.25;
+  }
+  for (const keyword of LOW_BUSINESS_VALUE_KEYWORDS) {
+    if (text.includes(String(keyword).toLowerCase())) score -= 2.25;
+  }
+  if (containsAny(text, GAMIFICATION_CONTEXT_KEYWORDS)) score += 3;
+  if (containsAny(text, DESIGN_BUSINESS_CONTEXT_KEYWORDS)) score += 2.5;
+  return score;
+}
+
+function businessRuleProblems(candidate, item = {}) {
+  const text = textForMatch(candidate);
+  const category = String(item.category || candidate.detected_category || '');
+  const title = String(candidate.title || item.title || '');
+  const problems = [];
+  const hasBusinessContext = containsAny(text, BUSINESS_RELEVANCE_KEYWORDS);
+  const hasLowValueSignal = containsAny(text, LOW_BUSINESS_VALUE_KEYWORDS);
+  const hasGamificationContext = containsAny(text, GAMIFICATION_CONTEXT_KEYWORDS);
+  const hasDesignBusinessContext = containsAny(text, DESIGN_BUSINESS_CONTEXT_KEYWORDS);
+
+  if (candidate.detected_section === 'work') {
+    if (hasLowValueSignal && !hasBusinessContext && !hasGamificationContext && !hasDesignBusinessContext) {
+      problems.push(`BtoC寄りの商品発売・周辺機器・かわいい系ニュースに見えるため、業務インサイトとして弱い: ${title}`);
+    }
+
+    if ((category.includes('ゲーミフィケーション') || /ゲーム|gaming|game/.test(text)) && !hasGamificationContext) {
+      problems.push(`ゲーミフィケーションではなく、単なるゲーム/機材/商品ニュースに見える。ゲーム要素による課題解決・行動変容・研修/販促/社内施策の文脈が必要: ${title}`);
+    }
+
+    if ((category.includes('デザイン') || /デザイン|design|adobe|figma/.test(text)) && !hasDesignBusinessContext && hasLowValueSignal) {
+      problems.push(`デザインの業務活用・研究・知財・UXロジックではなく、見た目/新商品紹介寄りに見える: ${title}`);
+    }
+  }
+
+  return problems;
+}
 function hasKeywordMatch(item, source) {
   const keywords = source.keywords || [];
   if (!keywords.length) return true;
@@ -424,20 +500,24 @@ function scoreCandidate(item, topicWeights = []) {
   let score = 0;
   const section = detectSection(item);
   const category = detectCategory(item);
+  const daysOld = ageDays(item);
+  const businessScore = businessRelevanceScore(item);
+
+  // v10.3: freshness matters, but relevance matters more. A slightly older BtoB/useful article
+  // should beat a brand-new consumer gadget or cute-product announcement.
   if (section === 'work') score += 6;
   if (section === 'society') score += 4;
-  if (item.published_at) {
-    const ageMs = Date.now() - new Date(item.published_at).getTime();
-    const ageDays = Math.max(0, ageMs / 86400000);
-    score += Math.max(0, 12 - ageDays);
-  }
+  score += Math.max(0, 6 - daysOld * 0.35); // Recency boost fades out instead of dominating.
+  if (daysOld > 60) score -= Math.min(4, (daysOld - 60) / 20);
+
   for (const keyword of CATEGORY_KEYWORDS[category] || []) {
     if (text.includes(String(keyword).toLowerCase())) score += 1;
   }
+  score += businessScore * 1.45;
   for (const weight of topicWeights) {
     const keyword = String(weight.keyword || '').toLowerCase();
     const value = Number(weight.weight || 0);
-    if (keyword && text.includes(keyword)) score += Math.min(5, value || 1);
+    if (keyword && text.includes(keyword)) score += Math.min(7, value || 1);
   }
   const rawSource = item.raw_source || {};
   if (rawSource.priority) score += Number(rawSource.priority) || 0;
@@ -457,8 +537,10 @@ function summarizeComments(comments) {
 
 async function collectCandidates(sourceConfig, topicWeights) {
   const lookbackDays = Number(sourceConfig.lookback_days || 14);
-  const maxPerSource = Number(sourceConfig.max_items_per_source || 12);
-  const maxCandidates = Number(sourceConfig.max_candidates_for_ai || 70);
+  const relevanceLookbackDays = Number(sourceConfig.relevance_lookback_days || sourceConfig.extended_lookback_days || 60);
+  const minExtendedBusinessScore = Number(sourceConfig.min_extended_business_score ?? 2.5);
+  const maxPerSource = Number(sourceConfig.max_items_per_source || 16);
+  const maxCandidates = Number(sourceConfig.max_candidates_for_ai || 80);
   const disallowedPatterns = sourceConfig.disallowed_domain_patterns || [];
 
   const all = [];
@@ -468,14 +550,33 @@ async function collectCandidates(sourceConfig, topicWeights) {
     try {
       console.log(`Collecting RSS: ${source.name} <${source.feed_url}>`);
       const xml = await fetchText(source.feed_url, Number(source.timeout_ms || 20000));
+      const sourceLookbackDays = Number(source.lookback_days || lookbackDays);
+      const sourceRelevanceLookbackDays = Number(source.relevance_lookback_days || source.extended_lookback_days || relevanceLookbackDays);
+
       const parsedItems = parseFeed(xml, source)
         .filter(item => !isDisallowedDomain(item.source_url, disallowedPatterns))
         .filter(item => !isLikelyGenericUrl(item.source_url))
-        .filter(item => isWithinLookback(item, Number(source.lookback_days || lookbackDays)))
         .filter(item => hasKeywordMatch(item, source))
+        .map(item => {
+          const detected_section = detectSection(item);
+          const detected_category = detectCategory(item);
+          const business_score = businessRelevanceScore(item);
+          const primary_window = isWithinLookback(item, sourceLookbackDays);
+          const extended_window = isWithinLookback(item, sourceRelevanceLookbackDays);
+          return { ...item, detected_section, detected_category, business_score, primary_window, extended_window };
+        })
+        .filter(item => {
+          if (item.primary_window) return true;
+          // v10.3: when recent candidates are weak, allow older but clearly relevant work articles.
+          // Society items stay relatively fresh; old society news is usually less useful.
+          return item.detected_section === 'work' && item.extended_window && item.business_score >= minExtendedBusinessScore;
+        })
+        .map(item => ({ ...item, score: scoreCandidate(item, topicWeights) }))
+        .sort((a, b) => b.score - a.score)
         .slice(0, maxPerSource);
 
-      console.log(`  candidates: ${parsedItems.length}`);
+      const olderRelevant = parsedItems.filter(item => !item.primary_window).length;
+      console.log(`  candidates: ${parsedItems.length}${olderRelevant ? ` (${olderRelevant} older relevance-based)` : ''}`);
       all.push(...parsedItems);
     } catch (error) {
       console.warn(`  skipped: ${source.name}: ${error.message}`);
@@ -490,15 +591,15 @@ async function collectCandidates(sourceConfig, topicWeights) {
 
   let deduped = [...dedupedMap.values()];
   deduped = deduped
-    .map(item => ({ ...item, detected_section: detectSection(item), detected_category: detectCategory(item), score: scoreCandidate(item, topicWeights) }))
+    .map(item => ({ ...item, detected_section: item.detected_section || detectSection(item), detected_category: item.detected_category || detectCategory(item), score: scoreCandidate(item, topicWeights) }))
     .sort((a, b) => {
       const sectionDiff = (SECTION_ORDER[a.detected_section] ?? 9) - (SECTION_ORDER[b.detected_section] ?? 9);
       if (sectionDiff !== 0) return sectionDiff;
       return b.score - a.score;
     });
 
-  const work = deduped.filter(item => item.detected_section === 'work').slice(0, Math.ceil(maxCandidates * 0.72));
-  const society = deduped.filter(item => item.detected_section === 'society').slice(0, Math.ceil(maxCandidates * 0.38));
+  const work = deduped.filter(item => item.detected_section === 'work').slice(0, Math.ceil(maxCandidates * 0.74));
+  const society = deduped.filter(item => item.detected_section === 'society').slice(0, Math.ceil(maxCandidates * 0.34));
   const mixed = [...work, ...society]
     .sort((a, b) => b.score - a.score)
     .slice(0, maxCandidates);
@@ -523,7 +624,7 @@ async function collectCandidates(sourceConfig, topicWeights) {
   console.log(`Usable candidates after URL check: ${checked.length}`);
 
   const enriched = [];
-  const enrichLimit = Number(sourceConfig.enrich_limit || 42);
+  const enrichLimit = Number(sourceConfig.enrich_limit || 48);
   for (const item of checked.slice(0, enrichLimit)) {
     enriched.push(await enrichCandidate(item));
   }
@@ -624,9 +725,12 @@ function makePrompt({ today, candidates, topicWeights, comments, previousError =
     `- work_items は「業務インサイト」専用。必ず WORK候補記事一覧から5本だけ選ぶ。\n` +
     `- society_items は「時事チェック」専用。必ず SOCIETY候補記事一覧から2本だけ選ぶ。\n` +
     `- work_items にSOCIETY候補のcandidate_idを入れない。society_items にWORK候補のcandidate_idを入れない。\n` +
-    `- 業務インサイトは、印刷・製造業、デザイン・UX、AI・テック、ゲーミフィケーション、企画・提案・調査・資料作成に使える内容を優先する。\n` +
-    `- 直近コメントやtopic_weightsで「もっと見たい」「追いたい」「使える」と示されたテーマは、候補に該当記事がある限り優先する。候補があるのに無視しない。\n` +
-    `- 特にゲーミフィケーション、製造業DX、AI活用、デザイン/UXなどの要望コメントがある場合、WORK候補内に近い記事があればwork_itemsに最低1本は入れる。ただし候補に存在しない記事を作らない。\n` +
+    `- 業務インサイトは「BtoBで情報を活用し、企画・提案・調査・資料作成・業務改善・顧客支援に使えるニュース」を最優先する。NewsPicksが扱うような、企業活動・産業構造・市場・技術実装・制度・知財・業務活用に関わる内容を選ぶ。\n` +
+    `- BtoC向けの新商品発売、ガジェット/PC周辺機器、かわいいデザイン、単なるプロダクト紹介は原則選ばない。例外は、BtoB提案・製造/販促/UX/知財/研究・企業施策に転用できる文脈が明確な場合だけ。\n` +
+    `- ゲーミフィケーションは「ゲーム」ではない。ゲーム要素（ポイント、ミッション、バッジ、ランキング、リワード、ストーリー、継続設計など）を使って課題解決・行動変容・研修・販促・社内浸透・健康/教育/業務改善につなげる事例だけを選ぶ。ゲーム機材、ゲーミングPC、周辺機器、通常のゲーム新作は選ばない。Pokémon SleepやセガXDのように、行動変容・企業施策・マーケティング活用として語れるものは可。\n` +
+    `- デザイン・UXは「かわいいものが発売」「新色/見た目の紹介」は不要。デザインリサーチ、UX調査、アクセシビリティ、デザインシステム、知財/意匠、行動心理、研究結果、業務で使える設計ロジックがあるものだけを選ぶ。\n` +
+    `- 直近コメントやtopic_weightsで「もっと見たい」「追いたい」「使える」と示されたテーマは、候補に該当記事がある限り優先する。ただし上記のBtoB/業務活用ルールを満たさない候補は選ばない。\n` +
+    `- 特にゲーミフィケーション、製造業DX、AI活用、BtoBマーケティング、業務改善などの要望コメントがある場合、WORK候補内に近い記事があればwork_itemsに最低1本は入れる。ただし候補に存在しない記事を作らない。\n` +
     `- 時事チェックは、国内情勢・国際情勢から社会の前提知識として押さえるべき内容を選ぶ。\n` +
     `- いつ・どこで・誰が・何をしたかが分かるように書く。候補にない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
     `- what_happened/background/watch_point/work_hint は、それぞれ前提を知らない人にも分かる2〜3文程度にする。\n` +
@@ -651,7 +755,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
         content: [
           {
             type: 'input_text',
-            text: 'あなたは日本語のニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にして、URLや事実を作らないでください。'
+            text: 'あなたはBtoB企業向けの日本語ニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にし、URLや事実を作らないでください。業務活用・企画提案・産業動向・NewsPicks的なビジネス視点を最優先し、単なるBtoC商品紹介やゲーム機材ニュースを避けてください。'
           }
         ]
       },
@@ -668,7 +772,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
     text: {
       format: {
         type: 'json_schema',
-        name: 'daily_briefing_selection_v9_1',
+        name: 'daily_briefing_selection_v10_3',
         strict: true,
         schema: makeSchema()
       }
@@ -730,6 +834,10 @@ function validateSelection(selection, candidates) {
       used.add(item.candidate_id);
       if (candidate.detected_section !== expectedSection) {
         errors.push(`${label}: candidate_id ${item.candidate_id} belongs to ${candidate.detected_section}, not ${expectedSection}`);
+      }
+      if (expectedSection === 'work') {
+        const problems = businessRuleProblems(candidate, item);
+        for (const problem of problems) errors.push(`${label}: ${problem}`);
       }
       if (!String(item.title || '').trim()) errors.push(`${label}: missing title`);
       if (!String(item.what_happened || '').trim()) errors.push(`${label}: missing what_happened`);
