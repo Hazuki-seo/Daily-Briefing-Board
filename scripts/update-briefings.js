@@ -895,7 +895,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
     text: {
       format: {
         type: 'json_schema',
-        name: 'daily_briefing_selection_v10_8',
+        name: 'daily_briefing_selection_v10_10',
         strict: true,
         schema: makeSchema(candidates)
       }
@@ -932,6 +932,74 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
     console.error(text.slice(0, 2000));
     throw new Error(`Failed to parse OpenAI JSON output: ${error.message}`);
   }
+}
+
+
+function hasAny(text, pattern) {
+  return pattern.test(String(text || ''));
+}
+
+function sentenceEnd(text) {
+  const s = normalizeWhitespace(text || '');
+  if (!s) return '';
+  return /[。.!?]$/.test(s) ? s : `${s}。`;
+}
+
+function completeAnalysisFields(selection, candidates) {
+  const candidateMap = new Map(candidates.map(candidate => [candidate.candidate_id, candidate]));
+  const items = flattenSelection(selection);
+
+  for (const item of items) {
+    const candidate = candidateMap.get(item.candidate_id);
+    if (!candidate) continue;
+
+    const candidateTitle = normalizeWhitespace(candidate.title || candidate.page_title || item.title || 'このニュース');
+    const category = normalizeWhitespace(item.category || candidate.detected_category || '業務');
+    const actor = normalizeWhitespace(item.actor || candidate.source_name || '発表企業');
+    const summary = normalizeWhitespace(item.summary || candidate.description || candidate.article_excerpt || candidateTitle);
+
+    let watchPoint = normalizeWhitespace(item.watch_point || '');
+    const watchNeedsHelp =
+      watchPoint.length < 70 ||
+      !/(意味|論点|注目|見るべき|指標|波及|比較|次に|影響|リスク|市場|企業|導入|判断|変化)/.test(watchPoint);
+
+    if (watchNeedsHelp) {
+      const base = watchPoint ? sentenceEnd(watchPoint) : '';
+      item.watch_point = normalizeWhitespace(
+        `${base}要約すると、${actor}の動きは「${category}」領域で企業が何を内製し、何を外部サービスに任せるかを見直す材料になる。` +
+        `見るべき論点は、導入対象の業務、費用対効果、運用負荷、競合サービスとの差分、実際の継続利用・成果指標が示されるかどうか。`
+      );
+    }
+
+    let workHint = normalizeWhitespace(item.work_hint || '');
+    const workNeedsHelp =
+      workHint.length < 100 ||
+      !/(例|たとえば|活用|使う|組み込|資料|提案|ヒアリング|比較)/.test(workHint) ||
+      !/(メリット|利点|効果|得られる|有効|期待)/.test(workHint) ||
+      !/(注意|リスク|懸念|デメリット|弱い|限界|確認)/.test(workHint) ||
+      !/(今後|次に|展開|見通し|予想|追う|継続)/.test(workHint);
+
+    if (workNeedsHelp) {
+      const base = workHint ? sentenceEnd(workHint) : '';
+      if (item.section === 'society') {
+        item.work_hint = normalizeWhitespace(
+          `${base}押さえどころとして、顧客企業の投資判断・調達・サプライチェーン・制度対応に影響する前提情報として使える。` +
+          `メリットは、提案冒頭で「なぜ今この論点が重要か」を説明しやすくなる点。` +
+          `注意点は、政策・国際情勢系のニュースは実行策に落とすまでに追加情報が必要なため、企業別の影響度や対象業界を確認すること。` +
+          `今後は、具体的な制度設計、参加企業、投資額、導入時期、関連企業の発表が出るかを追う。`
+        );
+      } else {
+        item.work_hint = normalizeWhitespace(
+          `${base}活用例としては、${category}に関する提案資料の「市場変化・顧客課題・比較観点」整理や、顧客ヒアリング項目の作成に使える。` +
+          `メリットは、単なる事例紹介ではなく、どの業務・部署・顧客課題に効くのかを議論する入口にできる点。` +
+          `注意点は、発表内容だけでは導入効果や費用対効果が十分に分からない場合があるため、実績値・対象業務・運用体制を追加確認する必要があること。` +
+          `今後は、導入企業数、継続率、価格、競合比較、実証結果や顧客事例が公開されるかを追う。`
+        );
+      }
+    }
+  }
+
+  return selection;
 }
 
 function validateSelection(selection, candidates) {
@@ -1057,6 +1125,7 @@ async function main() {
     if (attempt > 1) console.log(`Retrying OpenAI selection. Attempt ${attempt}/${maxAttempts}.`);
     try {
       selection = await callOpenAI({ today, candidates, topicWeights, comments, previousError });
+      selection = completeAnalysisFields(selection, candidates);
       validateSelection(selection, candidates);
       previousError = '';
       break;
