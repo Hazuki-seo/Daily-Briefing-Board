@@ -86,7 +86,7 @@ function renderSourceInfo(item) {
   ].join('');
 
   if (!rows) return '';
-  return `<div class="source-info">${rows}</div>`;
+  return `<div class="source-info compact-source-info">${rows}</div>`;
 }
 
 function renderDetailBlock(label, value) {
@@ -107,13 +107,18 @@ function detailLabelFor(item) {
   return item.section === 'society' ? 'なぜ重要か' : '見るポイント';
 }
 
-function renderSourceImage(item) {
+function sourceImageUrlFor(item) {
   const imageUrl = item.source_image_url || item.article_image_url || '';
-  if (!isHttpUrl(imageUrl)) return '';
+  return isHttpUrl(imageUrl) ? imageUrl : '';
+}
+
+function renderSourceImage(item) {
+  const imageUrl = sourceImageUrlFor(item);
+  if (!imageUrl) return '';
 
   const caption = item.image_caption || item.source_name || '記事サムネイル';
   return `
-    <figure class="article-image">
+    <figure class="article-image compact-article-image">
       <img src="${escapeHTML(imageUrl)}" alt="${escapeHTML(caption)}" loading="lazy" referrerpolicy="no-referrer" />
       <figcaption>${escapeHTML(caption)}</figcaption>
     </figure>
@@ -127,9 +132,11 @@ function renderNewsCard(item, comments) {
     renderDetailBlock('背景・文脈', item.background),
     renderDetailBlock(detailLabelFor(item), item.watch_point)
   ].join('');
+  const sourceImage = renderSourceImage(item);
+  const hasImageClass = sourceImage ? 'has-article-image' : 'no-article-image';
 
   return `
-    <article class="news-card" id="${escapeHTML(item.id)}">
+    <article class="news-card compact-news-card ${hasImageClass}" id="${escapeHTML(item.id)}">
       <div class="news-meta">
         <span class="badge">${escapeHTML(item.category)}</span>
         <span class="news-id">${escapeHTML(item.id)}</span>
@@ -138,22 +145,61 @@ function renderNewsCard(item, comments) {
       <h3>${escapeHTML(item.title)}</h3>
       <p class="news-summary">${escapeHTML(item.summary)}</p>
       ${renderSourceInfo(item)}
-      ${renderSourceImage(item)}
-      ${detailBlocks ? `<div class="news-details">${detailBlocks}</div>` : ''}
-      ${item.work_hint ? `<p class="news-hint"><strong>${hintLabelFor(item)}：</strong>${escapeHTML(item.work_hint)}</p>` : ''}
-      <div class="card-actions">
-        ${item.source_url ? `<a href="${escapeHTML(item.source_url)}" target="_blank" rel="noopener">出典を見る</a>` : ''}
-        <button type="button" class="comment-button secondary" data-briefing-id="${escapeHTML(item.id)}">このニュースにコメント</button>
+      <div class="news-card-main">
+        ${sourceImage}
+        <div class="news-card-text">
+          ${detailBlocks ? `<div class="news-details compact-news-details">${detailBlocks}</div>` : ''}
+          ${item.work_hint ? `<p class="news-hint"><strong>${hintLabelFor(item)}：</strong>${escapeHTML(item.work_hint)}</p>` : ''}
+          <div class="card-actions">
+            ${item.source_url ? `<a href="${escapeHTML(item.source_url)}" target="_blank" rel="noopener">出典を見る</a>` : ''}
+            <button type="button" class="comment-button secondary" data-briefing-id="${escapeHTML(item.id)}">このニュースにコメント</button>
+          </div>
+        </div>
       </div>
       ${renderComments(itemComments)}
     </article>
   `;
 }
 
+function titleForIndex(item) {
+  return item.title || item.summary || item.id;
+}
+
+function renderTodayIndex(items) {
+  const container = document.querySelector('#today-index');
+  if (!container) return;
+
+  const workNews = items.filter(item => item.section === 'work');
+  const societyNews = items.filter(item => item.section === 'society');
+
+  const renderGroup = (label, list) => {
+    if (!list.length) return '';
+    return `
+      <div class="today-index-group">
+        <span class="today-index-label">${escapeHTML(label)}</span>
+        <div class="today-index-list">
+          ${list.map((item, index) => `
+            <a href="#${escapeHTML(item.id)}" class="today-index-item" data-jump-link>
+              <span>${escapeHTML(index + 1)}</span>
+              <strong>${escapeHTML(titleForIndex(item))}</strong>
+            </a>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  };
+
+  container.innerHTML = `
+    ${renderGroup('業務インサイト', workNews)}
+    ${renderGroup('時事チェック', societyNews)}
+  `;
+}
+
 function renderBriefingDate(date, items, comments) {
   const workNews = items.filter(item => item.section === 'work');
   const societyNews = items.filter(item => item.section === 'society');
-  const approvedComments = comments.filter(comment => comment.status === 'approved');
+  const activeIds = new Set(items.map(item => item.id));
+  const approvedComments = comments.filter(comment => comment.status === 'approved' && activeIds.has(comment.briefing_id));
   const isLatest = date === latestDate;
 
   document.querySelector('#today-title').textContent = isLatest
@@ -163,10 +209,12 @@ function renderBriefingDate(date, items, comments) {
   document.querySelector('#society-count').textContent = societyNews.length;
   document.querySelector('#comment-count').textContent = approvedComments.length;
 
+  renderTodayIndex(items);
   document.querySelector('#work-news').innerHTML = workNews.map(item => renderNewsCard(item, comments)).join('') || '<p>この日の業務インサイトはありません。</p>';
   document.querySelector('#society-news').innerHTML = societyNews.map(item => renderNewsCard(item, comments)).join('') || '<p>この日の時事チェックはありません。</p>';
 
   setupCommentButtons();
+  setupJumpLinks();
 }
 
 function renderArchive(archive, activeDate) {
@@ -219,9 +267,30 @@ function setupCommentButtons() {
     button.addEventListener('click', () => {
       const input = document.querySelector('#briefing-id-input');
       input.value = button.dataset.briefingId;
-      document.querySelector('#comment-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelector('#comment-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
       input.focus();
     });
+  });
+}
+
+function setupJumpLinks() {
+  document.querySelectorAll('[data-jump-link], .sticky-nav a[href^="#"]').forEach(link => {
+    link.addEventListener('click', event => {
+      const targetId = link.getAttribute('href');
+      if (!targetId || targetId === '#') return;
+      const target = document.querySelector(targetId);
+      if (!target) return;
+      event.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+
+function setupTopButton() {
+  const button = document.querySelector('#to-top-button');
+  if (!button) return;
+  button.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 }
 
@@ -295,6 +364,8 @@ async function init() {
     document.querySelector('#work-news').innerHTML = `<p>${escapeHTML(error.message)}</p>`;
   }
 
+  setupJumpLinks();
+  setupTopButton();
   setupCommentForm();
 }
 

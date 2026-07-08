@@ -6,55 +6,64 @@
   <title>今日のニュースボード</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <header class="site-header">
+<body id="page-top">
+  <header class="site-header compact-header">
     <div class="site-header__inner">
-      <p class="eyebrow">Daily Briefing Board</p>
-      <h1>今日のニュース</h1>
-      <p class="lead">企画・提案・調査に使えるインサイト5本＋押さえておきたい時事2本。コメントや参考URLをもとに、翌日以降に追うテーマを育てていくニュースボードです。</p>
+      <div class="header-title-row">
+        <div>
+          <p class="eyebrow">Daily Briefing Board</p>
+          <h1>今日のニュース</h1>
+        </div>
+        <p class="lead">企画・提案・調査に使えるインサイト5本＋時事2本。コメントや参考URLをもとに、翌日以降に追うテーマを育てます。</p>
+      </div>
     </div>
   </header>
 
-  <main class="layout">
-    <section class="panel panel--hero" id="today-panel">
-      <div class="panel-heading">
-        <p class="eyebrow">Today</p>
-        <h2 id="today-title">読み込み中...</h2>
+  <nav class="sticky-nav" aria-label="ページ内ナビゲーション">
+    <div class="sticky-nav__inner">
+      <a href="#today-panel">今日の見出し</a>
+      <a href="#work-section">業務インサイト</a>
+      <a href="#society-section">時事チェック</a>
+      <a href="#comment-panel">コメント</a>
+      <a href="#archive-panel">過去</a>
+      <button type="button" id="to-top-button" class="to-top-button">↑ 上へ</button>
+    </div>
+  </nav>
+
+  <main class="layout compact-layout">
+    <section class="panel panel--hero panel--compact-hero" id="today-panel">
+      <div class="today-overview">
+        <div>
+          <p class="eyebrow">Today</p>
+          <h2 id="today-title">読み込み中...</h2>
+        </div>
+        <div class="summary-pills" aria-label="今日の本数">
+          <span><strong id="work-count">-</strong> 業務</span>
+          <span><strong id="society-count">-</strong> 時事</span>
+          <span><strong id="comment-count">-</strong> コメント</span>
+        </div>
       </div>
-      <div class="summary-grid">
-        <div>
-          <span class="summary-number" id="work-count">-</span>
-          <span class="summary-label">業務インサイト</span>
-        </div>
-        <div>
-          <span class="summary-number" id="society-count">-</span>
-          <span class="summary-label">時事チェック</span>
-        </div>
-        <div>
-          <span class="summary-number" id="comment-count">-</span>
-          <span class="summary-label">承認済みコメント</span>
-        </div>
-      </div>
+      <div id="today-index" class="today-index" aria-label="今日の記事一覧"></div>
     </section>
 
-    <section class="panel">
-      <div class="panel-heading">
+    <section class="panel compact-panel" id="work-section">
+      <div class="panel-heading compact-heading">
         <p class="eyebrow">Business Insights</p>
         <h2>業務インサイト5本</h2>
       </div>
       <div id="work-news" class="card-list"></div>
     </section>
 
-    <section class="panel">
-      <div class="panel-heading">
+    <section class="panel compact-panel" id="society-section">
+      <div class="panel-heading compact-heading">
         <p class="eyebrow">World & Japan</p>
         <h2>時事チェック2本</h2>
       </div>
       <div id="society-news" class="card-list"></div>
     </section>
 
-    <section class="panel">
-      <div class="panel-heading">
+    <section class="panel compact-panel" id="comment-panel">
+      <div class="panel-heading compact-heading">
         <p class="eyebrow">Feedback</p>
         <h2>コメント・参考URLを送る</h2>
         <p>「もっと追いたい」「提案に使えそう」「このURLも参考になる」などを投稿できます。投稿者名は表示されます。</p>
@@ -68,7 +77,7 @@
           </label>
           <label>
             対象ニュースID <span class="required">必須</span>
-            <input type="text" name="briefing_id" id="briefing-id-input" required placeholder="例：20260702-03" />
+            <input type="text" name="briefing_id" id="briefing-id-input" required placeholder="記事ボタンから自動入力できます" />
           </label>
         </div>
 
@@ -100,16 +109,16 @@
       </form>
     </section>
 
-    <section class="panel">
-      <div class="panel-heading">
+    <section class="panel compact-panel" id="archive-panel">
+      <div class="panel-heading compact-heading">
         <p class="eyebrow">Archive</p>
         <h2>過去のニュース</h2>
       </div>
       <div id="archive-list" class="archive-list"></div>
     </section>
 
-    <section class="panel">
-      <div class="panel-heading">
+    <section class="panel compact-panel" id="signals-panel">
+      <div class="panel-heading compact-heading">
         <p class="eyebrow">Topic Signals</p>
         <h2>いま強めに追うテーマ</h2>
       </div>
