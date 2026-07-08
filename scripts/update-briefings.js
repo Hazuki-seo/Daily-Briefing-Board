@@ -806,7 +806,12 @@ function makePrompt({ today, candidates, topicWeights, comments, previousError =
     `- 特にゲーミフィケーション、製造業DX、AI活用、BtoBマーケティング、業務改善などの要望コメントがある場合、WORK候補内に近い記事があればwork_itemsに最低1本は入れる。ただし候補に存在しない記事を作らない。\n` +
     `- 時事チェックは、国内情勢・国際情勢から社会の前提知識として押さえるべき内容を選ぶ。\n` +
     `- いつ・どこで・誰が・何をしたかが分かるように書く。候補にない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
-    `- what_happened/background/watch_point/work_hint は、それぞれ前提を知らない人にも分かる2〜3文程度にする。\n` +
+    `- what_happened は「何が起きたか」を事実ベースで2〜3文。候補記事に書かれていない推測はしない。\n` +
+    `- background は「なぜ今起きているか/業界で何が変わっているか」を2〜3文。市場・制度・企業課題・技術潮流のどれに関係するかを明記する。\n` +
+    `- watch_point は単なる感想にしない。「次に見るべき指標・論点・企業への波及・比較観点」を2〜3文で書く。例: 導入社数、価格、対象業務、規制、競合の動き、顧客体験、現場負荷、収益化可能性など。\n` +
+    `- work_hint は一番重要。必ず3〜5文で、次の4要素をすべて含める: ①具体的な活用例（どの部署/企画/提案/資料に使うか）、②メリット/得られる効果、③注意点・リスク・デメリット、④今後の展開予想/次に追うべきこと。\n` +
+    `- work_hint は「活用できる」「参考になる」だけで終わらせない。たとえば「製造業DX提案の導入課題スライドで、PoC止まりの原因整理に使う。メリットは顧客側の部門横断課題を会話に出しやすい点。注意点は、成功事例ではなくセミナー告知なので実績データとしては弱い。今後は参加企業の導入事例やBPRテンプレート化の有無を見る。」のように、具体的な使い方まで書く。\n` +
+    `- 時事チェックの work_hint は「押さえどころ」として、企業活動・市場・サプライチェーン・制度・投資判断への影響、メリット/リスク、次の展開予想を含める。\n` +
     `- titleは日本語で具体的に。summaryは1〜2文。importanceは1〜5の数字文字列。\n` +
     `- categoryは「AI・テック」「印刷・製造業」「デザイン・UX」「ゲーミフィケーション」「国内情勢」「国際情勢」のいずれかを基本にする。\n\n` +
     `関心テーマ(topic_weights):\n${JSON.stringify(topicWeights.slice(0, 20), null, 2)}\n\n` +
@@ -828,7 +833,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
         content: [
           {
             type: 'input_text',
-            text: 'あなたはBtoB企業向けの日本語ニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にし、URLや事実を作らないでください。業務活用・企画提案・産業動向・NewsPicks的なビジネス視点を最優先し、単なるBtoC商品紹介やゲーム機材ニュースを避けてください。'
+            text: 'あなたはBtoB企業向けの日本語ニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にし、URLや事実を作らないでください。業務活用・企画提案・産業動向・NewsPicks的なビジネス視点を最優先し、単なるBtoC商品紹介やゲーム機材ニュースを避けてください。活用メモ/押さえどころは、具体的な利用場面、メリット、注意点・リスク、今後の展開予想まで含めて、仕事でそのまま使える分析にしてください。'
           }
         ]
       },
@@ -845,12 +850,12 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
     text: {
       format: {
         type: 'json_schema',
-        name: 'daily_briefing_selection_v10_5',
+        name: 'daily_briefing_selection_v10_7',
         strict: true,
         schema: makeSchema(candidates)
       }
     },
-    max_output_tokens: 11000
+    max_output_tokens: 14000
   };
 
   const res = await fetch('https://api.openai.com/v1/responses', {
@@ -917,6 +922,15 @@ function validateSelection(selection, candidates) {
       if (!String(item.background || '').trim()) errors.push(`${label}: missing background`);
       if (!String(item.watch_point || '').trim()) errors.push(`${label}: missing watch_point`);
       if (!String(item.work_hint || '').trim()) errors.push(`${label}: missing work_hint`);
+
+      const workHint = String(item.work_hint || '').trim();
+      if (workHint) {
+        if (workHint.length < 70) errors.push(`${label}: work_hint is too short; include concrete use case, benefit, risk, and outlook`);
+        if (!/(例|たとえば|活用|使う|組み込)/.test(workHint)) errors.push(`${label}: work_hint must include a concrete use case/example`);
+        if (!/(メリット|利点|効果|得られる|有効)/.test(workHint)) errors.push(`${label}: work_hint must include benefit/merit`);
+        if (!/(注意|リスク|懸念|デメリット|弱い|限界)/.test(workHint)) errors.push(`${label}: work_hint must include risk/caution/demerit`);
+        if (!/(今後|次に|展開|見通し|予想|追う)/.test(workHint)) errors.push(`${label}: work_hint must include future outlook or next point to watch`);
+      }
     }
   }
 
