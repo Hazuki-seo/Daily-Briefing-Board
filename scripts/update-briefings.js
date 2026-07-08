@@ -444,7 +444,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
       redirect: 'follow',
       ...options,
       headers: {
-        'User-Agent': 'daily-briefing-board/10.5 (+https://github.com/Hazuki-seo/Daily-Briefing-Board)',
+        'User-Agent': 'daily-briefing-board/10.8 (+https://github.com/Hazuki-seo/Daily-Briefing-Board)',
         'Accept': options.accept || 'text/html,application/xhtml+xml,application/xml,text/xml,application/rss+xml,application/atom+xml,*/*;q=0.8',
         ...(options.headers || {})
       },
@@ -813,7 +813,8 @@ function makePrompt({ today, candidates, topicWeights, comments, previousError =
     `- work_hint は「活用できる」「参考になる」だけで終わらせない。たとえば「製造業DX提案の導入課題スライドで、PoC止まりの原因整理に使う。メリットは顧客側の部門横断課題を会話に出しやすい点。注意点は、成功事例ではなくセミナー告知なので実績データとしては弱い。今後は参加企業の導入事例やBPRテンプレート化の有無を見る。」のように、具体的な使い方まで書く。\n` +
     `- 時事チェックの work_hint は「押さえどころ」として、企業活動・市場・サプライチェーン・制度・投資判断への影響、メリット/リスク、次の展開予想を含める。\n` +
     `- titleは日本語で具体的に。summaryは1〜2文。importanceは1〜5の数字文字列。\n` +
-    `- categoryは「AI・テック」「印刷・製造業」「デザイン・UX」「ゲーミフィケーション」「国内情勢」「国際情勢」のいずれかを基本にする。\n\n` +
+    `- categoryは「AI・テック」「印刷・製造業」「デザイン・UX」「ゲーミフィケーション」「国内情勢」「国際情勢」のいずれかを基本にする。\n` +
+    `- 出力はJSONスキーマに合うJSONのみ。説明文、Markdown、コードブロック、末尾コメント、候補一覧の再掲は絶対に含めない。文字列内の改行や引用符はJSONとして壊れない形にする。\n\n` +
     `関心テーマ(topic_weights):\n${JSON.stringify(topicWeights.slice(0, 20), null, 2)}\n\n` +
     `直近コメント:\n${JSON.stringify(comments, null, 2)}\n\n` +
     `WORK候補記事一覧（work_itemsはこの中から5本だけ）:\n${JSON.stringify(workCandidates, null, 2)}\n\n` +
@@ -850,12 +851,12 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
     text: {
       format: {
         type: 'json_schema',
-        name: 'daily_briefing_selection_v10_7',
+        name: 'daily_briefing_selection_v10_8',
         strict: true,
         schema: makeSchema(candidates)
       }
     },
-    max_output_tokens: 14000
+    max_output_tokens: 22000
   };
 
   const res = await fetch('https://api.openai.com/v1/responses', {
@@ -873,13 +874,18 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
   }
 
   const data = await res.json();
+  if (data.status && data.status !== 'completed') {
+    throw new Error(`OpenAI API response status was ${data.status}: ${JSON.stringify(data.incomplete_details || data.error || {})}`);
+  }
+
   const text = outputTextFromResponse(data);
   if (!text) throw new Error('OpenAI API returned empty output text.');
 
   try {
     return JSON.parse(text);
   } catch (error) {
-    console.error(text);
+    console.error('OpenAI returned invalid JSON. First 2000 chars below:');
+    console.error(text.slice(0, 2000));
     throw new Error(`Failed to parse OpenAI JSON output: ${error.message}`);
   }
 }
@@ -997,15 +1003,15 @@ async function main() {
   const maxAttempts = 4;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (attempt > 1) console.log(`Retrying OpenAI selection. Attempt ${attempt}/${maxAttempts}.`);
-    selection = await callOpenAI({ today, candidates, topicWeights, comments, previousError });
     try {
+      selection = await callOpenAI({ today, candidates, topicWeights, comments, previousError });
       validateSelection(selection, candidates);
       previousError = '';
       break;
     } catch (error) {
       previousError = error.message;
       if (attempt === maxAttempts) throw error;
-      console.warn(`Selection validation failed:
+      console.warn(`Selection generation/validation failed:
 ${previousError}`);
     }
   }
