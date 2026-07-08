@@ -65,6 +65,42 @@ const DESIGN_BUSINESS_CONTEXT_KEYWORDS = [
   'design research', 'accessibility', 'usability', 'design system', 'research', 'intellectual property'
 ];
 
+
+// v10.5: BtoB業務インサイトとして弱い、一般消費者向けの話題を強く抑制する。
+// 「販促」や「印刷」という語が入っていても、単なる本・グッズ・キャンペーン記事は業務インサイトにしない。
+const CONSUMER_ENTERTAINMENT_KEYWORDS = [
+  '小説', '新刊', '書籍', '電子書籍', '文庫', '著者', '作家', '漫画', 'コミック', 'アニメ', '映画', '音楽', 'アイドル', '俳優', '配信記念',
+  'フェア', 'プレゼント', 'プレゼントキャンペーン', '抽選', '当選', 'サコッシュ', 'ポーチ', 'ステッカー', 'グッズ', 'ノベルティ',
+  '限定', 'オンライン限定', '購入者', 'ファン', 'キャラクター', 'コラボカフェ', 'キャンペーンで', '発売記念',
+  'novel', 'book', 'ebook', 'comic', 'manga', 'anime', 'movie', 'music', 'giveaway', 'present campaign', 'fan', 'merch'
+];
+
+const STRONG_B2B_CONTEXT_KEYWORDS = [
+  'BtoB', 'B2B', '法人', '法人向け', '企業向け', '事業者向け', '業務向け', '産業向け', '自治体向け', '行政向け',
+  '企業導入', '導入事例', '業務改善', '業務効率化', '省人化', '自動化', '現場改善', '社内施策', '人材育成', '研修', '教育研修',
+  '販促支援', 'マーケティング支援', 'CRM', '営業支援', '顧客体験', 'ロイヤルティ施策', '調査結果', '市場調査', '実証実験', '共同研究',
+  'SaaS', 'API', 'プラットフォーム', 'ソリューション', 'サービス提供', '支援サービス', '製造業', '工場', '生産', '設備', '物流',
+  'サプライチェーン', '印刷会社', '印刷技術', 'パッケージ', 'デジタル印刷', '小ロット印刷', '商業印刷', '知財', '特許', '意匠',
+  'enterprise', 'business customers', 'for business', 'B2B', 'case study', 'whitepaper', 'market research', 'solution', 'platform', 'SaaS'
+];
+
+const PRINTING_BUSINESS_REQUIRED_KEYWORDS = [
+  '印刷会社', '印刷業', '商業印刷', '産業印刷', 'パッケージ印刷', 'デジタル印刷', 'オンデマンド印刷', '可変印刷', '小ロット印刷',
+  'プリント基板', '3Dプリント', '印刷技術', '印刷工程', '製版', '後加工', '刷版', 'インク', '紙器', 'パッケージ', '工場', '生産', '製造', 'BtoB', '法人', '企業向け'
+];
+
+function isStrongB2BText(text) {
+  return containsAny(text, STRONG_B2B_CONTEXT_KEYWORDS);
+}
+
+function isConsumerEntertainmentText(text) {
+  return containsAny(text, CONSUMER_ENTERTAINMENT_KEYWORDS);
+}
+
+function isPrintingBusinessText(text) {
+  return containsAny(text, PRINTING_BUSINESS_REQUIRED_KEYWORDS);
+}
+
 const SECTION_ORDER = { work: 0, society: 1 };
 
 function todayJST() {
@@ -297,6 +333,8 @@ function businessRelevanceScore(item) {
   for (const keyword of LOW_BUSINESS_VALUE_KEYWORDS) {
     if (text.includes(String(keyword).toLowerCase())) score -= 2.25;
   }
+  if (containsAny(text, CONSUMER_ENTERTAINMENT_KEYWORDS)) score -= 4.5;
+  if (containsAny(text, STRONG_B2B_CONTEXT_KEYWORDS)) score += 4.5;
   if (containsAny(text, GAMIFICATION_CONTEXT_KEYWORDS)) score += 3;
   if (containsAny(text, DESIGN_BUSINESS_CONTEXT_KEYWORDS)) score += 2.5;
   return score;
@@ -311,9 +349,19 @@ function businessRuleProblems(candidate, item = {}) {
   const hasLowValueSignal = containsAny(text, LOW_BUSINESS_VALUE_KEYWORDS);
   const hasGamificationContext = containsAny(text, GAMIFICATION_CONTEXT_KEYWORDS);
   const hasDesignBusinessContext = containsAny(text, DESIGN_BUSINESS_CONTEXT_KEYWORDS);
+  const hasStrongB2BContext = isStrongB2BText(text);
+  const hasConsumerEntertainmentSignal = isConsumerEntertainmentText(text);
 
   if (candidate.detected_section === 'work') {
-    if (hasLowValueSignal && !hasBusinessContext && !hasGamificationContext && !hasDesignBusinessContext) {
+    if (hasConsumerEntertainmentSignal && !hasStrongB2BContext) {
+      problems.push(`書籍・作家・グッズ・プレゼントキャンペーンなど一般消費者向けの話題に見えるため、BtoBの業務インサイトとして不適切: ${title}`);
+    }
+
+    if (String(candidate.detected_category || item.category || '').includes('印刷') && hasConsumerEntertainmentSignal && !isPrintingBusinessText(text)) {
+      problems.push(`印刷・製造業カテゴリに見えるが、実態は本/グッズ/購入者キャンペーンで、印刷技術・製造工程・BtoB提案の話題ではない: ${title}`);
+    }
+
+    if (hasLowValueSignal && !hasBusinessContext && !hasGamificationContext && !hasDesignBusinessContext && !hasStrongB2BContext) {
       problems.push(`BtoC寄りの商品発売・周辺機器・かわいい系ニュースに見えるため、業務インサイトとして弱い: ${title}`);
     }
 
@@ -396,7 +444,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
       redirect: 'follow',
       ...options,
       headers: {
-        'User-Agent': 'daily-briefing-board/9.1 (+https://github.com/Hazuki-seo/Daily-Briefing-Board)',
+        'User-Agent': 'daily-briefing-board/10.5 (+https://github.com/Hazuki-seo/Daily-Briefing-Board)',
         'Accept': options.accept || 'text/html,application/xhtml+xml,application/xml,text/xml,application/rss+xml,application/atom+xml,*/*;q=0.8',
         ...(options.headers || {})
       },
@@ -561,6 +609,16 @@ async function collectCandidates(sourceConfig, topicWeights) {
           const detected_section = detectSection(item);
           const detected_category = detectCategory(item);
           const business_score = businessRelevanceScore(item);
+          const candidateForRules = { ...item, detected_section, detected_category, business_score };
+          return { item, detected_section, detected_category, business_score, candidateForRules };
+        })
+        .filter(({ candidateForRules }) => {
+          if (candidateForRules.detected_section !== 'work') return true;
+          // v10.5: 候補段階で明らかなBtoC/エンタメ/プレゼントキャンペーンを落とす。
+          // これをしないと、OpenAIが「販促に転用できる」と無理に業務文脈化してしまう。
+          return businessRuleProblems(candidateForRules, { category: candidateForRules.detected_category }).length === 0;
+        })
+        .map(({ item, detected_section, detected_category, business_score }) => {
           const primary_window = isWithinLookback(item, sourceLookbackDays);
           const extended_window = isWithinLookback(item, sourceRelevanceLookbackDays);
           return { ...item, detected_section, detected_category, business_score, primary_window, extended_window };
@@ -787,7 +845,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
     text: {
       format: {
         type: 'json_schema',
-        name: 'daily_briefing_selection_v10_4',
+        name: 'daily_briefing_selection_v10_5',
         strict: true,
         schema: makeSchema(candidates)
       }
