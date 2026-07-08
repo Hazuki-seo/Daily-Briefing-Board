@@ -351,15 +351,63 @@ h3 { margin: 0 0 8px; font-size: clamp(17px, 2vw, 20px); line-height: 1.45; }
 .news-detail-block p {
   margin: 2px 0 0;
   color: #3a3732;
-  line-height: 1.7;
+  line-height: 1.72;
   font-size: 14px;
 }
+
+.analysis-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: grid;
+  gap: 5px;
+}
+
+.analysis-list li {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: #3a3732;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.analysis-list li strong {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.analysis-list li span { min-width: 0; }
 
 .news-hint {
   background: #f7f4ed;
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 14px;
+}
+
+.news-hint .hint-title {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.news-hint p {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.news-hint .analysis-list { gap: 6px; }
+
+.news-hint .analysis-list li {
+  grid-template-columns: 72px minmax(0, 1fr);
+  font-size: 13.5px;
 }
 
 .card-actions {
@@ -458,6 +506,11 @@ textarea { min-height: 120px; resize: vertical; }
   .source-info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .news-card-main { grid-template-columns: 1fr; }
   .article-image img { height: clamp(210px, 52vw, 340px); }
+  .analysis-list li,
+  .news-hint .analysis-list li {
+    grid-template-columns: 1fr;
+    gap: 1px;
+  }
 }
 
 @media (max-width: 760px) {

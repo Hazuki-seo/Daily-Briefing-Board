@@ -89,12 +89,55 @@ function renderSourceInfo(item) {
   return `<div class="source-info compact-source-info">${rows}</div>`;
 }
 
+function splitStructuredText(value) {
+  const text = String(value || '').trim();
+  if (!text) return [];
+
+  const labelPattern = /[【\[]([^】\]]{2,12})[】\]]/g;
+  const matches = [...text.matchAll(labelPattern)];
+  if (matches.length) {
+    return matches.map((match, index) => {
+      const start = match.index + match[0].length;
+      const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
+      return {
+        label: match[1].trim(),
+        body: text.slice(start, end).replace(/^[:：\s-]+/, '').trim()
+      };
+    }).filter(part => part.body);
+  }
+
+  const lines = text.split(/\n|\r|\s*[・•]\s*/).map(line => line.trim()).filter(Boolean);
+  if (lines.length > 1) return lines.map(line => ({ label: '', body: line }));
+
+  return [{ label: '', body: text }];
+}
+
+function renderStructuredText(value) {
+  const parts = splitStructuredText(value);
+  if (!parts.length) return '';
+
+  if (parts.length === 1 && !parts[0].label) {
+    return `<p>${escapeHTML(parts[0].body)}</p>`;
+  }
+
+  return `
+    <ul class="analysis-list">
+      ${parts.map(part => `
+        <li>
+          ${part.label ? `<strong>${escapeHTML(part.label)}</strong>` : ''}
+          <span>${escapeHTML(part.body)}</span>
+        </li>
+      `).join('')}
+    </ul>
+  `;
+}
+
 function renderDetailBlock(label, value) {
   if (!value) return '';
   return `
     <div class="news-detail-block">
       <span>${escapeHTML(label)}</span>
-      <p>${escapeHTML(value)}</p>
+      ${renderStructuredText(value)}
     </div>
   `;
 }
@@ -149,7 +192,7 @@ function renderNewsCard(item, comments) {
         ${sourceImage}
         <div class="news-card-text">
           ${detailBlocks ? `<div class="news-details compact-news-details">${detailBlocks}</div>` : ''}
-          ${item.work_hint ? `<p class="news-hint"><strong>${hintLabelFor(item)}：</strong>${escapeHTML(item.work_hint)}</p>` : ''}
+          ${item.work_hint ? `<div class="news-hint"><strong class="hint-title">${hintLabelFor(item)}</strong>${renderStructuredText(item.work_hint)}</div>` : ''}
           <div class="card-actions">
             ${item.source_url ? `<a href="${escapeHTML(item.source_url)}" target="_blank" rel="noopener">出典を見る</a>` : ''}
             <button type="button" class="comment-button secondary" data-briefing-id="${escapeHTML(item.id)}">このニュースにコメント</button>
