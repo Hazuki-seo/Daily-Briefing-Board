@@ -648,9 +648,15 @@ function outputTextFromResponse(data) {
   return chunks.join('\n').trim();
 }
 
-function makeSchema() {
-  const itemProperties = {
-    candidate_id: { type: 'string' },
+function makeSchema(candidates = []) {
+  const workIds = candidates
+    .filter(candidate => candidate.detected_section === 'work')
+    .map(candidate => candidate.candidate_id);
+  const societyIds = candidates
+    .filter(candidate => candidate.detected_section === 'society')
+    .map(candidate => candidate.candidate_id);
+
+  const baseItemProperties = {
     category: { type: 'string' },
     event_date: { type: 'string' },
     location: { type: 'string' },
@@ -665,11 +671,20 @@ function makeSchema() {
     importance: { type: 'string' }
   };
 
-  const itemSchema = {
-    type: 'object',
-    additionalProperties: false,
-    required: Object.keys(itemProperties),
-    properties: itemProperties
+  const itemSchema = allowedIds => {
+    const candidateIdSchema = allowedIds.length
+      ? { type: 'string', enum: allowedIds }
+      : { type: 'string' };
+    const properties = {
+      candidate_id: candidateIdSchema,
+      ...baseItemProperties
+    };
+    return {
+      type: 'object',
+      additionalProperties: false,
+      required: Object.keys(properties),
+      properties
+    };
   };
 
   return {
@@ -681,13 +696,13 @@ function makeSchema() {
         type: 'array',
         minItems: 5,
         maxItems: 5,
-        items: itemSchema
+        items: itemSchema(workIds)
       },
       society_items: {
         type: 'array',
         minItems: 2,
         maxItems: 2,
-        items: itemSchema
+        items: itemSchema(societyIds)
       }
     }
   };
@@ -724,7 +739,7 @@ function makePrompt({ today, candidates, topicWeights, comments, previousError =
     `- candidate_idは候補一覧に存在するものだけを使う。7本すべて別のcandidate_idにする。\n` +
     `- work_items は「業務インサイト」専用。必ず WORK候補記事一覧から5本だけ選ぶ。\n` +
     `- society_items は「時事チェック」専用。必ず SOCIETY候補記事一覧から2本だけ選ぶ。\n` +
-    `- work_items にSOCIETY候補のcandidate_idを入れない。society_items にWORK候補のcandidate_idを入れない。\n` +
+    `- work_items にSOCIETY候補のcandidate_idを入れない。society_items にWORK候補のcandidate_idを入れない。候補IDの区分違いはシステム側で拒否される。\n` +
     `- 業務インサイトは「BtoBで情報を活用し、企画・提案・調査・資料作成・業務改善・顧客支援に使えるニュース」を最優先する。NewsPicksが扱うような、企業活動・産業構造・市場・技術実装・制度・知財・業務活用に関わる内容を選ぶ。\n` +
     `- BtoC向けの新商品発売、ガジェット/PC周辺機器、かわいいデザイン、単なるプロダクト紹介は原則選ばない。例外は、BtoB提案・製造/販促/UX/知財/研究・企業施策に転用できる文脈が明確な場合だけ。\n` +
     `- ゲーミフィケーションは「ゲーム」ではない。ゲーム要素（ポイント、ミッション、バッジ、ランキング、リワード、ストーリー、継続設計など）を使って課題解決・行動変容・研修・販促・社内浸透・健康/教育/業務改善につなげる事例だけを選ぶ。ゲーム機材、ゲーミングPC、周辺機器、通常のゲーム新作は選ばない。Pokémon SleepやセガXDのように、行動変容・企業施策・マーケティング活用として語れるものは可。\n` +
@@ -772,9 +787,9 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
     text: {
       format: {
         type: 'json_schema',
-        name: 'daily_briefing_selection_v10_3',
+        name: 'daily_briefing_selection_v10_4',
         strict: true,
-        schema: makeSchema()
+        schema: makeSchema(candidates)
       }
     },
     max_output_tokens: 11000
