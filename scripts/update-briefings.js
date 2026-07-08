@@ -89,6 +89,36 @@ const PRINTING_BUSINESS_REQUIRED_KEYWORDS = [
   'プリント基板', '3Dプリント', '印刷技術', '印刷工程', '製版', '後加工', '刷版', 'インク', '紙器', 'パッケージ', '工場', '生産', '製造', 'BtoB', '法人', '企業向け'
 ];
 
+
+// v10.9: 「出展します」「キャンペーンします」だけのPRを業務インサイトにしない。
+// 提案資料に使えるのは、汎用化できる示唆・調査・方法論・導入実績・市場変化がある記事だけ。
+const EVENT_ANNOUNCEMENT_KEYWORDS = [
+  '出展', 'ブース', '展示', '展示会', 'EXPO', 'エキスポ', 'フェア', '来場', '出品', '開催します', '開催予定', '登壇', 'セミナー開催', 'ウェビナー開催'
+];
+
+const GENERALIZABLE_BUSINESS_INSIGHT_KEYWORDS = [
+  '調査結果', '市場調査', 'レポート', '白書', '導入事例', '事例公開', '実証実験', 'PoC', '効果測定', 'ROI', 'KPI', '分析', 'ベンチマーク',
+  '提供開始', 'サービス開始', '正式提供', '新サービス', 'ソリューション', 'SaaS', 'プラットフォーム', 'API', '業務改善', '業務改革', 'BPR',
+  '共同研究', '提携', '協業', '契約', '制度', '規制', 'ガイドライン', '標準化', '知財', '特許', '意匠', '企業導入', '導入企業',
+  'サプライチェーン', '生産性', '省人化', '自動化', '現場改善', '製造工程', '顧客体験', '行動変容', '定着率', '継続率', '参加率'
+];
+
+const RECRUITING_LOW_RELEVANCE_KEYWORDS = [
+  '採用支援EXPO', '採用支援', '採用ツール', '採用プロモーション', '求人', '求職者', '内定者フォロー', '採用率', '採用担当', '就活', '新卒採用'
+];
+
+function isEventAnnouncementText(text) {
+  return containsAny(text, EVENT_ANNOUNCEMENT_KEYWORDS);
+}
+
+function hasGeneralizableBusinessInsight(text) {
+  return containsAny(text, GENERALIZABLE_BUSINESS_INSIGHT_KEYWORDS);
+}
+
+function isRecruitingLowRelevanceText(text) {
+  return containsAny(text, RECRUITING_LOW_RELEVANCE_KEYWORDS);
+}
+
 function isStrongB2BText(text) {
   return containsAny(text, STRONG_B2B_CONTEXT_KEYWORDS);
 }
@@ -334,9 +364,12 @@ function businessRelevanceScore(item) {
     if (text.includes(String(keyword).toLowerCase())) score -= 2.25;
   }
   if (containsAny(text, CONSUMER_ENTERTAINMENT_KEYWORDS)) score -= 4.5;
+  if (isEventAnnouncementText(text) && !hasGeneralizableBusinessInsight(text)) score -= 5.5;
+  if (isRecruitingLowRelevanceText(text) && !hasGeneralizableBusinessInsight(text)) score -= 4;
   if (containsAny(text, STRONG_B2B_CONTEXT_KEYWORDS)) score += 4.5;
   if (containsAny(text, GAMIFICATION_CONTEXT_KEYWORDS)) score += 3;
   if (containsAny(text, DESIGN_BUSINESS_CONTEXT_KEYWORDS)) score += 2.5;
+  if (hasGeneralizableBusinessInsight(text)) score += 3.25;
   return score;
 }
 
@@ -351,6 +384,9 @@ function businessRuleProblems(candidate, item = {}) {
   const hasDesignBusinessContext = containsAny(text, DESIGN_BUSINESS_CONTEXT_KEYWORDS);
   const hasStrongB2BContext = isStrongB2BText(text);
   const hasConsumerEntertainmentSignal = isConsumerEntertainmentText(text);
+  const isEventAnnouncement = isEventAnnouncementText(text);
+  const hasReusableInsight = hasGeneralizableBusinessInsight(text);
+  const isRecruitingLowRelevance = isRecruitingLowRelevanceText(text);
 
   if (candidate.detected_section === 'work') {
     if (hasConsumerEntertainmentSignal && !hasStrongB2BContext) {
@@ -363,6 +399,14 @@ function businessRuleProblems(candidate, item = {}) {
 
     if (hasLowValueSignal && !hasBusinessContext && !hasGamificationContext && !hasDesignBusinessContext && !hasStrongB2BContext) {
       problems.push(`BtoC寄りの商品発売・周辺機器・かわいい系ニュースに見えるため、業務インサイトとして弱い: ${title}`);
+    }
+
+    if (isEventAnnouncement && !hasReusableInsight) {
+      problems.push(`展示会出展・セミナー告知・キャンペーン告知だけに見える。調査結果、導入事例、方法論、市場変化、実証結果など汎用化できる示唆がないため業務インサイトとして弱い: ${title}`);
+    }
+
+    if (isRecruitingLowRelevance && !hasReusableInsight && !/人材育成|研修|教育研修|社内浸透|行動変容|定着率|エンゲージメント/.test(text)) {
+      problems.push(`採用支援・求人・内定者フォローの告知に寄りすぎており、ユーザーのBtoB情報活用/企画提案の参考として弱い: ${title}`);
     }
 
     if ((category.includes('ゲーミフィケーション') || /ゲーム|gaming|game/.test(text)) && !hasGamificationContext) {
@@ -834,7 +878,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
         content: [
           {
             type: 'input_text',
-            text: 'あなたはBtoB企業向けの日本語ニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にし、URLや事実を作らないでください。業務活用・企画提案・産業動向・NewsPicks的なビジネス視点を最優先し、単なるBtoC商品紹介やゲーム機材ニュースを避けてください。活用メモ/押さえどころは、具体的な利用場面、メリット、注意点・リスク、今後の展開予想まで含めて、仕事でそのまま使える分析にしてください。'
+            text: 'あなたはBtoB企業向けの日本語ニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にし、URLや事実を作らないでください。業務活用・企画提案・産業動向・NewsPicks的なビジネス視点を最優先し、単なるBtoC商品紹介、採用イベント告知、ゲーム機材ニュースを避けてください。出展/キャンペーン/セミナー告知だけの記事を無理に業務活用へ結びつけないでください。見るポイントは出典リンクなしで理解できる要約と見立てにし、活用メモ/押さえどころは、具体的な利用場面、メリット、注意点・リスク、今後の展開予想まで含めて、仕事でそのまま使える分析にしてください。'
           }
         ]
       },
@@ -928,6 +972,14 @@ function validateSelection(selection, candidates) {
       if (!String(item.background || '').trim()) errors.push(`${label}: missing background`);
       if (!String(item.watch_point || '').trim()) errors.push(`${label}: missing watch_point`);
       if (!String(item.work_hint || '').trim()) errors.push(`${label}: missing work_hint`);
+
+      const watchPoint = String(item.watch_point || '').trim();
+      if (watchPoint) {
+        if (watchPoint.length < 60) errors.push(`${label}: watch_point is too short; summarize the meaning and business implication without requiring the source link`);
+        if (!/(意味|論点|注目|見るべき|指標|波及|比較|次に|影響|リスク|市場|企業|導入)/.test(watchPoint)) {
+          errors.push(`${label}: watch_point must include summary plus business implication / what to watch next`);
+        }
+      }
 
       const workHint = String(item.work_hint || '').trim();
       if (workHint) {
