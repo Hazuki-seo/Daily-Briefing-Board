@@ -852,10 +852,10 @@ function makePrompt({ today, candidates, topicWeights, comments, previousError =
     `- いつ・どこで・誰が・何をしたかが分かるように書く。候補にない場合は「発表資料上は明記なし」「オンライン公開」など、分からないことを分からないまま書く。\n` +
     `- what_happened は「何が起きたか」を事実ベースで2〜3文。候補記事に書かれていない推測はしない。\n` +
     `- background は「なぜ今起きているか/業界で何が変わっているか」を2〜3文。市場・制度・企業課題・技術潮流のどれに関係するかを明記する。\n` +
-    `- watch_point は単なる感想にしない。「次に見るべき指標・論点・企業への波及・比較観点」を2〜3文で書く。例: 導入社数、価格、対象業務、規制、競合の動き、顧客体験、現場負荷、収益化可能性など。\n` +
-    `- work_hint は一番重要。必ず3〜5文で、次の4要素をすべて含める: ①具体的な活用例（どの部署/企画/提案/資料に使うか）、②メリット/得られる効果、③注意点・リスク・デメリット、④今後の展開予想/次に追うべきこと。\n` +
-    `- work_hint は「活用できる」「参考になる」だけで終わらせない。たとえば「製造業DX提案の導入課題スライドで、PoC止まりの原因整理に使う。メリットは顧客側の部門横断課題を会話に出しやすい点。注意点は、成功事例ではなくセミナー告知なので実績データとしては弱い。今後は参加企業の導入事例やBPRテンプレート化の有無を見る。」のように、具体的な使い方まで書く。\n` +
-    `- 時事チェックの work_hint は「押さえどころ」として、企業活動・市場・サプライチェーン・制度・投資判断への影響、メリット/リスク、次の展開予想を含める。\n` +
+    `- watch_point は読みやすさを優先し、必ずラベル付きで3項目に分ける。形式は「【要約】... 【論点】... 【次に見る】...」。出典リンクを開かなくても、ニュースの意味・ビジネス上の論点・次に確認する指標が分かる内容にする。\n` +
+    `- work_hint は一番重要。業務インサイトでは必ず「【活用例】... 【メリット】... 【注意点】... 【今後】...」の4項目に分ける。各項目は1文でよいが、部署・資料・提案・調査・ヒアリングなど具体的な使い方を含める。\n` +
+    `- work_hint は「活用できる」「参考になる」だけで終わらせない。例:「【活用例】製造業DX提案の導入課題スライドで、PoC止まりの原因整理に使う。【メリット】顧客側の部門横断課題を会話に出しやすい。【注意点】成功事例ではなくセミナー告知なので実績データとしては弱い。【今後】参加企業の導入事例やBPRテンプレート化の有無を見る。」の粒度で書く。\n` +
+    `- 時事チェックの work_hint は「押さえどころ」として、必ず「【意味】... 【影響】... 【リスク】... 【今後】...」の4項目に分け、企業活動・市場・サプライチェーン・制度・投資判断への影響を要約する。\n` +
     `- titleは日本語で具体的に。summaryは1〜2文。importanceは1〜5の数字文字列。\n` +
     `- categoryは「AI・テック」「印刷・製造業」「デザイン・UX」「ゲーミフィケーション」「国内情勢」「国際情勢」のいずれかを基本にする。\n` +
     `- 出力はJSONスキーマに合うJSONのみ。説明文、Markdown、コードブロック、末尾コメント、候補一覧の再掲は絶対に含めない。文字列内の改行や引用符はJSONとして壊れない形にする。\n\n` +
@@ -878,7 +878,7 @@ async function callOpenAI({ today, candidates, topicWeights, comments, previousE
         content: [
           {
             type: 'input_text',
-            text: 'あなたはBtoB企業向けの日本語ニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にし、URLや事実を作らないでください。業務活用・企画提案・産業動向・NewsPicks的なビジネス視点を最優先し、単なるBtoC商品紹介、採用イベント告知、ゲーム機材ニュースを避けてください。出展/キャンペーン/セミナー告知だけの記事を無理に業務活用へ結びつけないでください。見るポイントは出典リンクなしで理解できる要約と見立てにし、活用メモ/押さえどころは、具体的な利用場面、メリット、注意点・リスク、今後の展開予想まで含めて、仕事でそのまま使える分析にしてください。'
+            text: 'あなたはBtoB企業向けの日本語ニュース編集者です。必ず指定されたJSONスキーマに従ってください。候補記事のcandidate_idだけを根拠にし、URLや事実を作らないでください。業務活用・企画提案・産業動向・NewsPicks的なビジネス視点を最優先し、単なるBtoC商品紹介、採用イベント告知、ゲーム機材ニュースを避けてください。出展/キャンペーン/セミナー告知だけの記事を無理に業務活用へ結びつけないでください。見るポイントは【要約】【論点】【次に見る】に分け、出典リンクなしで理解できる要約と見立てにしてください。活用メモ/押さえどころは【活用例】【メリット】【注意点】【今後】または【意味】【影響】【リスク】【今後】に分け、仕事でそのまま使える分析にしてください。'
           }
         ]
       },
@@ -976,13 +976,15 @@ function completeAnalysisFields(selection, candidates) {
         const base = watchPoint ? sentenceEnd(watchPoint) : '';
         if (section === 'society') {
           item.watch_point = normalizeWhitespace(
-            `${base}要約すると、このニュースは企業活動の前提条件になりやすい政策・市場・国際関係の変化を示している。` +
-            `見るべき論点は、対象業界への影響範囲、関連企業の投資・調達・提携の動き、制度化や予算化の有無、短期の報道で終わらず実行段階に進むかどうか。`
+            `【要約】${base || `${actor}に関する動きは、企業活動の前提条件になりやすい政策・市場・国際関係の変化を示している。`}` +
+            `【論点】対象業界への影響範囲、関連企業の投資・調達・提携の動き、制度化や予算化の有無が焦点になる。` +
+            `【次に見る】短期の報道で終わらず、具体的な制度設計、参加企業、導入時期、関連予算が出るかを確認する。`
           );
         } else {
           item.watch_point = normalizeWhitespace(
-            `${base}要約すると、${actor}の動きは「${category}」領域で、企業がどの業務を効率化し、どの価値を外部サービスやデータ活用で補うかを考える材料になる。` +
-            `見るべき論点は、対象業務、顧客企業の課題、導入後の成果指標、既存手法との差分、継続利用される仕組みまで示されているかどうか。`
+            `【要約】${base || `${actor}の動きは「${category}」領域で、企業がどの業務を効率化し、どの価値を外部サービスやデータ活用で補うかを考える材料になる。`}` +
+            `【論点】対象業務、顧客企業の課題、既存手法との差分、導入後の成果指標が具体的に示されているかが焦点になる。` +
+            `【次に見る】導入社数、価格、継続率、顧客事例、競合比較、運用体制の情報が追加で出るかを追う。`
           );
         }
       }
@@ -999,17 +1001,17 @@ function completeAnalysisFields(selection, candidates) {
         const base = workHint ? sentenceEnd(workHint) : '';
         if (section === 'society') {
           item.work_hint = normalizeWhitespace(
-            `${base}押さえどころとして、顧客企業の投資判断・調達・サプライチェーン・制度対応に影響する前提情報として使える。` +
-            `メリットは、提案冒頭で「なぜ今この論点が重要か」を説明しやすくなる点。` +
-            `注意点は、政策・国際情勢系のニュースは実行策に落とすまでに追加情報が必要なため、企業別の影響度や対象業界を確認すること。` +
-            `今後は、具体的な制度設計、参加企業、投資額、導入時期、関連企業の発表が出るかを追う。`
+            `【意味】${base || '顧客企業の投資判断・調達・サプライチェーン・制度対応に影響する前提情報として押さえる。'}` +
+            `【影響】提案冒頭で「なぜ今この論点が重要か」を説明し、対象業界の優先課題を整理しやすくなる。` +
+            `【リスク】政策・国際情勢系のニュースは実行策に落とすまでに追加情報が必要で、企業別の影響度や対象業界を確認する必要がある。` +
+            `【今後】具体的な制度設計、参加企業、投資額、導入時期、関連企業の発表が出るかを追う。`
           );
         } else {
           item.work_hint = normalizeWhitespace(
-            `${base}活用例としては、${category}に関する提案資料の「市場変化・顧客課題・比較観点」整理や、顧客ヒアリング項目の作成に使える。` +
-            `メリットは、単なる事例紹介ではなく、どの業務・部署・顧客課題に効くのかを議論する入口にできる点。` +
-            `注意点は、発表内容だけでは導入効果や費用対効果が十分に分からない場合があるため、実績値・対象業務・運用体制を追加確認する必要があること。` +
-            `今後は、導入企業数、継続率、価格、競合比較、実証結果や顧客事例が公開されるかを追う。`
+            `【活用例】${base || `${category}に関する提案資料の「市場変化・顧客課題・比較観点」整理や、顧客ヒアリング項目の作成に使う。`}` +
+            `【メリット】単なる事例紹介ではなく、どの業務・部署・顧客課題に効くのかを議論する入口にできる。` +
+            `【注意点】発表内容だけでは導入効果や費用対効果が十分に分からない場合があるため、実績値・対象業務・運用体制を追加確認する必要がある。` +
+            `【今後】導入企業数、継続率、価格、競合比較、実証結果や顧客事例が公開されるかを追う。`
           );
         }
       }
@@ -1060,7 +1062,7 @@ function validateSelection(selection, candidates) {
 
       const watchPoint = String(item.watch_point || '').trim();
       if (watchPoint) {
-        if (watchPoint.length < 60) errors.push(`${label}: watch_point is too short; summarize the meaning and business implication without requiring the source link`);
+        if (watchPoint.length < 45) errors.push(`${label}: watch_point is too short; use labeled summary/point/next sections`);
         if (!/(意味|論点|注目|見るべき|指標|波及|比較|次に|影響|リスク|市場|企業|導入)/.test(watchPoint)) {
           errors.push(`${label}: watch_point must include summary plus business implication / what to watch next`);
         }
@@ -1068,11 +1070,11 @@ function validateSelection(selection, candidates) {
 
       const workHint = String(item.work_hint || '').trim();
       if (workHint) {
-        if (workHint.length < 70) errors.push(`${label}: work_hint is too short; include concrete use case, benefit, risk, and outlook`);
-        if (!/(例|たとえば|活用|使う|組み込)/.test(workHint)) errors.push(`${label}: work_hint must include a concrete use case/example`);
-        if (!/(メリット|利点|効果|得られる|有効)/.test(workHint)) errors.push(`${label}: work_hint must include benefit/merit`);
-        if (!/(注意|リスク|懸念|デメリット|弱い|限界)/.test(workHint)) errors.push(`${label}: work_hint must include risk/caution/demerit`);
-        if (!/(今後|次に|展開|見通し|予想|追う)/.test(workHint)) errors.push(`${label}: work_hint must include future outlook or next point to watch`);
+        if (workHint.length < 60) errors.push(`${label}: work_hint is too short; use labeled use/benefit/caution/outlook sections`);
+        if (!/(【活用例】|【意味】|例|たとえば|活用|使う|組み込)/.test(workHint)) errors.push(`${label}: work_hint must include a concrete use case/example`);
+        if (!/(【メリット】|【影響】|メリット|利点|効果|得られる|有効)/.test(workHint)) errors.push(`${label}: work_hint must include benefit/merit`);
+        if (!/(【注意点】|【リスク】|注意|リスク|懸念|デメリット|弱い|限界)/.test(workHint)) errors.push(`${label}: work_hint must include risk/caution/demerit`);
+        if (!/(【今後】|今後|次に|展開|見通し|予想|追う)/.test(workHint)) errors.push(`${label}: work_hint must include future outlook or next point to watch`);
       }
     }
   }
